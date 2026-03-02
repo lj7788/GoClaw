@@ -1,0 +1,15 @@
+[skill]
+name = "email-sender"
+description = "使用 nodemailer 通过 SMTP 发送邮件"
+version = "1.0.0"
+
+[[tools]]
+name = "email_send"
+description = "发送邮件到指定收件人。调用格式: <tool_call>{\"name\": \"email_send\", \"arguments\": {\"recipient\": \"邮箱地址\", \"subject\": \"主题\", \"body\": \"内容\"}}</tool_call>"
+kind = "shell"
+command = "node index.js"
+
+[tools.args]
+recipient = "收件人邮箱地址"
+subject = "邮件主题"
+body = "邮件正文内容"
