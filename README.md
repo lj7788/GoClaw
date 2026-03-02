@@ -6,6 +6,8 @@ GoClaw是基于ZeroClaw的GoLang语言实现版本，并对web端进行了中文
 
 3.web端使用VUE重写
 
+4.增加发送邮件skills,在消息框输入：请发送邮件到 270901361@qq.com，主题是"Hello Zero1"，内容是"测试内容"
+
 效果如下：
 
 ![goclaw01](https://github.com/user-attachments/assets/8925e214-081a-4e54-a026-be870bd1585b)
