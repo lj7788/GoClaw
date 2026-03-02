@@ -1,124 +1,64 @@
-import {
-  createContext,
-  useContext,
-  useState,
-  useCallback,
-  useEffect,
-  type ReactNode,
-} from 'react';
-import React from 'react';
-import {
-  getToken as readToken,
-  setToken as writeToken,
-  clearToken as removeToken,
-  isAuthenticated as checkAuth,
-} from '../lib/auth';
-import { pair as apiPair, getPublicHealth } from '../lib/api';
+import { ref, onMounted, onUnmounted } from 'vue'
+import { getToken, setToken, clearToken, isAuthenticated as checkAuth } from '../lib/auth'
+import { pair as apiPair, getPublicHealth } from '../lib/api'
 
-// ---------------------------------------------------------------------------
-// Context shape
-// ---------------------------------------------------------------------------
+export function useAuth() {
+  const token = ref<string | null>(getToken())
+  const authenticated = ref<boolean>(checkAuth())
+  const loading = ref<boolean>(!checkAuth())
 
-export interface AuthState {
-  /** The current bearer token, or null if not authenticated. */
-  token: string | null;
-  /** Whether the user is currently authenticated. */
-  isAuthenticated: boolean;
-  /** True while the initial auth check is in progress. */
-  loading: boolean;
-  /** Pair with the agent using a pairing code. Stores the token on success. */
-  pair: (code: string) => Promise<void>;
-  /** Clear the stored token and sign out. */
-  logout: () => void;
-}
+  const pair = async (code: string): Promise<void> => {
+    const { token: newToken } = await apiPair(code)
+    setToken(newToken)
+    token.value = newToken
+    authenticated.value = true
+  }
 
-const AuthContext = createContext<AuthState | null>(null);
+  const logout = (): void => {
+    clearToken()
+    token.value = null
+    authenticated.value = false
+  }
 
-// ---------------------------------------------------------------------------
-// Provider
-// ---------------------------------------------------------------------------
+  onMounted(() => {
+    if (checkAuth()) return
 
-export interface AuthProviderProps {
-  children: ReactNode;
-}
-
-export function AuthProvider({ children }: AuthProviderProps) {
-  const [token, setTokenState] = useState<string | null>(readToken);
-  const [authenticated, setAuthenticated] = useState<boolean>(checkAuth);
-  const [loading, setLoading] = useState<boolean>(!checkAuth());
-
-  // On mount: check if server requires pairing at all
-  useEffect(() => {
-    if (checkAuth()) return; // already have a token, no need to check
-    let cancelled = false;
+    let cancelled = false
     getPublicHealth()
-      .then((health) => {
-        if (cancelled) return;
-        // Auto-authenticate if pairing is not required OR already paired
+      .then((health: { require_pairing: boolean; paired: boolean }) => {
+        if (cancelled) return
         if (!health.require_pairing || health.paired) {
-          setAuthenticated(true);
+          authenticated.value = true
         }
       })
       .catch(() => {
         // health endpoint unreachable — fall back to showing pairing dialog
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+        if (!cancelled) loading.value = false
+      })
 
-  // Keep state in sync if localStorage is changed in another tab
-  useEffect(() => {
     const handler = (e: StorageEvent) => {
       if (e.key === 'zeroclaw_token') {
-        const t = readToken();
-        setTokenState(t);
-        setAuthenticated(t !== null && t.length > 0);
+        const t = getToken()
+        token.value = t
+        authenticated.value = t !== null && t.length > 0
       }
-    };
-    window.addEventListener('storage', handler);
-    return () => window.removeEventListener('storage', handler);
-  }, []);
+    }
 
-  const pair = useCallback(async (code: string): Promise<void> => {
-    const { token: newToken } = await apiPair(code);
-    writeToken(newToken);
-    setTokenState(newToken);
-    setAuthenticated(true);
-  }, []);
+    window.addEventListener('storage', handler)
 
-  const logout = useCallback((): void => {
-    removeToken();
-    setTokenState(null);
-    setAuthenticated(false);
-  }, []);
+    onUnmounted(() => {
+      cancelled = true
+      window.removeEventListener('storage', handler)
+    })
+  })
 
-  const value: AuthState = {
+  return {
     token,
     isAuthenticated: authenticated,
     loading,
     pair,
-    logout,
-  };
-
-  return React.createElement(AuthContext.Provider, { value }, children);
-}
-
-// ---------------------------------------------------------------------------
-// Hook
-// ---------------------------------------------------------------------------
-
-/**
- * Access the authentication state from any component inside `<AuthProvider>`.
- * Throws if used outside the provider.
- */
-export function useAuth(): AuthState {
-  const ctx = useContext(AuthContext);
-  if (!ctx) {
-    throw new Error('useAuth must be used within an <AuthProvider>');
+    logout
   }
-  return ctx;
 }

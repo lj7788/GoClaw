@@ -4,6 +4,7 @@ GoClaw是基于ZeroClaw的GoLang语言实现版本，并对web端进行了中文
 
 2.只是测试了钉钉机器人功能
 
+3.web端使用VUE重写
 
 效果如下：
 

@@ -11,10 +11,6 @@ import type {
 } from '../types/api';
 import { clearToken, getToken, setToken } from './auth';
 
-// ---------------------------------------------------------------------------
-// Base fetch wrapper
-// ---------------------------------------------------------------------------
-
 export class UnauthorizedError extends Error {
   constructor() {
     super('Unauthorized');
@@ -54,7 +50,6 @@ export async function apiFetch<T = unknown>(
     throw new Error(`API ${response.status}: ${text || response.statusText}`);
   }
 
-  // Some endpoints may return 204 No Content
   if (response.status === 204) {
     return undefined as unknown as T;
   }
@@ -72,10 +67,6 @@ function unwrapField<T>(value: T | Record<string, T>, key: string): T {
   return value as T;
 }
 
-// ---------------------------------------------------------------------------
-// Pairing
-// ---------------------------------------------------------------------------
-
 export async function pair(code: string): Promise<{ token: string }> {
   const response = await fetch('/pair', {
     method: 'POST',
@@ -92,10 +83,6 @@ export async function pair(code: string): Promise<{ token: string }> {
   return data;
 }
 
-// ---------------------------------------------------------------------------
-// Public health (no auth required)
-// ---------------------------------------------------------------------------
-
 export async function getPublicHealth(): Promise<{ require_pairing: boolean; paired: boolean }> {
   const response = await fetch('/health');
   if (!response.ok) {
@@ -103,10 +90,6 @@ export async function getPublicHealth(): Promise<{ require_pairing: boolean; pai
   }
   return response.json() as Promise<{ require_pairing: boolean; paired: boolean }>;
 }
-
-// ---------------------------------------------------------------------------
-// Status / Health
-// ---------------------------------------------------------------------------
 
 export function getStatus(): Promise<StatusResponse> {
   return apiFetch<StatusResponse>('/api/status');
@@ -117,10 +100,6 @@ export function getHealth(): Promise<HealthSnapshot> {
     unwrapField(data, 'health'),
   );
 }
-
-// ---------------------------------------------------------------------------
-// Config
-// ---------------------------------------------------------------------------
 
 export function getConfig(): Promise<string> {
   return apiFetch<string | { format?: string; content: string }>('/api/config').then((data) =>
@@ -136,19 +115,11 @@ export function putConfig(toml: string): Promise<void> {
   });
 }
 
-// ---------------------------------------------------------------------------
-// Tools
-// ---------------------------------------------------------------------------
-
 export function getTools(): Promise<ToolSpec[]> {
   return apiFetch<ToolSpec[] | { tools: ToolSpec[] }>('/api/tools').then((data) =>
     unwrapField(data, 'tools'),
   );
 }
-
-// ---------------------------------------------------------------------------
-// Cron
-// ---------------------------------------------------------------------------
 
 export function getCronJobs(): Promise<CronJob[]> {
   return apiFetch<CronJob[] | { jobs: CronJob[] }>('/api/cron').then((data) =>
@@ -174,19 +145,11 @@ export function deleteCronJob(id: string): Promise<void> {
   });
 }
 
-// ---------------------------------------------------------------------------
-// Integrations
-// ---------------------------------------------------------------------------
-
 export function getIntegrations(): Promise<Integration[]> {
   return apiFetch<Integration[] | { integrations: Integration[] }>('/api/integrations').then(
     (data) => unwrapField(data, 'integrations'),
   );
 }
-
-// ---------------------------------------------------------------------------
-// Doctor / Diagnostics
-// ---------------------------------------------------------------------------
 
 export function runDoctor(): Promise<DiagResult[]> {
   return apiFetch<DiagResult[] | { results: DiagResult[]; summary?: unknown }>('/api/doctor', {
@@ -194,10 +157,6 @@ export function runDoctor(): Promise<DiagResult[]> {
     body: JSON.stringify({}),
   }).then((data) => (Array.isArray(data) ? data : data.results));
 }
-
-// ---------------------------------------------------------------------------
-// Memory
-// ---------------------------------------------------------------------------
 
 export function getMemory(
   query?: string,
@@ -229,19 +188,11 @@ export function deleteMemory(key: string): Promise<{ status: string; deleted: bo
   });
 }
 
-// ---------------------------------------------------------------------------
-// Cost
-// ---------------------------------------------------------------------------
-
 export function getCost(): Promise<CostSummary> {
   return apiFetch<CostSummary | { cost: CostSummary }>('/api/cost').then((data) =>
     unwrapField(data, 'cost'),
   );
 }
-
-// ---------------------------------------------------------------------------
-// CLI Tools
-// ---------------------------------------------------------------------------
 
 export function getCliTools(): Promise<CliTool[]> {
   return apiFetch<CliTool[] | { cli_tools: CliTool[] }>('/api/cli-tools').then((data) =>
