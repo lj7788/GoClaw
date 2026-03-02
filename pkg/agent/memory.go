@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"sync"
+
+	"github.com/zeroclaw-labs/goclaw/pkg/memory"
 )
 
 type NoneMemoryBackend struct {
@@ -22,7 +24,15 @@ func (b *NoneMemoryBackend) Store(ctx context.Context, key, content string, cate
 	return nil
 }
 
-func (b *NoneMemoryBackend) Delete(ctx context.Context, key string) error {
+func (b *NoneMemoryBackend) Get(ctx context.Context, key string) (*MemoryEntry, error) {
+	return nil, memory.ErrNotFound
+}
+
+func (b *NoneMemoryBackend) Search(ctx context.Context, query string, limit int) ([]MemoryEntry, error) {
+	return []MemoryEntry{}, nil
+}
+
+func (b *NoneMemoryBackend) Forget(ctx context.Context, key string) error {
 	return nil
 }
 

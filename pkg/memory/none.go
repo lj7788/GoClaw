@@ -23,6 +23,11 @@ func (b *NoneMemoryBackend) Store(ctx context.Context, key, content string, cate
 	return nil
 }
 
+// Get retrieves a specific memory entry by key.
+func (b *NoneMemoryBackend) Get(ctx context.Context, key string) (*MemoryEntry, error) {
+	return nil, ErrNotFound
+}
+
 // Delete removes a memory entry.
 func (b *NoneMemoryBackend) Delete(ctx context.Context, key string) error {
 	return nil

@@ -16,8 +16,14 @@ type Memory interface {
 	// Store saves a memory entry.
 	Store(ctx context.Context, key, content string, category *string, metadata map[string]string) error
 
-	// Delete removes a memory entry.
-	Delete(ctx context.Context, key string) error
+	// Get retrieves a specific memory entry by key.
+	Get(ctx context.Context, key string) (*MemoryEntry, error)
+
+	// Search searches memory entries based on a query.
+	Search(ctx context.Context, query string, limit int) ([]MemoryEntry, error)
+
+	// Forget removes a memory entry.
+	Forget(ctx context.Context, key string) error
 
 	// Clear removes all memory entries.
 	Clear(ctx context.Context) error

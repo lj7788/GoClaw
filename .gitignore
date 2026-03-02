@@ -2,4 +2,5 @@ goclaw
 *.exe
 web/node_modules
 web/dist
+web/dist2
 .DS_Store

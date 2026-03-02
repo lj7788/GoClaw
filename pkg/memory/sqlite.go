@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 )
 
 type SQLiteMemoryBackend struct {
@@ -40,7 +40,7 @@ func NewSQLiteMemoryBackend(dbPath string) (*SQLiteMemoryBackend, error) {
 		return nil, fmt.Errorf("failed to create memory directory: %w", err)
 	}
 
-	db, err := sql.Open("sqlite3", dbPath+"?_journal_mode=WAL&_synchronous=NORMAL&_timeout=30000")
+	db, err := sql.Open("sqlite", dbPath+"?_journal_mode=WAL&_synchronous=NORMAL&_timeout=30000")
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
@@ -160,6 +160,27 @@ func (m *SQLiteMemoryBackend) Recall(ctx context.Context, query string, limit in
 
 func (m *SQLiteMemoryBackend) Search(ctx context.Context, query string, limit int) ([]MemoryEntry, error) {
 	return m.Recall(ctx, query, limit, nil)
+}
+
+func (m *SQLiteMemoryBackend) Get(ctx context.Context, key string) (*MemoryEntry, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	var entry MemoryEntry
+	err := m.db.QueryRowContext(ctx, `
+		SELECT id, key, content, category, created_at, updated_at
+		FROM memories
+		WHERE key = ?
+	`, key).Scan(&entry.ID, &entry.Key, &entry.Content, &entry.Category, &entry.CreatedAt, &entry.UpdatedAt)
+
+	if err == sql.ErrNoRows {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return &entry, nil
 }
 
 func (m *SQLiteMemoryBackend) Forget(ctx context.Context, key string) error {

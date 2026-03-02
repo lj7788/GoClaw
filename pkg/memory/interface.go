@@ -26,6 +26,7 @@ type MemoryEntry struct {
 type MemoryBackend interface {
 	Store(ctx context.Context, key, content string, category *string, metadata map[string]string) error
 	Recall(ctx context.Context, query string, limit int, category *string) ([]MemoryEntry, error)
+	Get(ctx context.Context, key string) (*MemoryEntry, error)
 	Search(ctx context.Context, query string, limit int) ([]MemoryEntry, error)
 	Forget(ctx context.Context, key string) error
 	Clear(ctx context.Context) error
@@ -60,6 +61,12 @@ func NewBackend(backendType string, config map[string]string) (MemoryBackend, er
 	switch backendType {
 	case "none":
 		return &NoneMemoryBackend{}, nil
+	case "sqlite":
+		dbPath := ""
+		if path, ok := config["path"]; ok {
+			dbPath = path
+		}
+		return NewSQLiteMemoryBackend(dbPath)
 	default:
 		return nil, errors.New("unknown backend type: " + backendType)
 	}

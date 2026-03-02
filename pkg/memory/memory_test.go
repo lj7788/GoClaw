@@ -2,7 +2,6 @@ package memory
 
 import (
 	"context"
-	"os"
 	"path/filepath"
 	"testing"
 )
