@@ -1,65 +1,53 @@
-import type { SSEEvent } from '../types/api';
-import { getToken } from './auth';
+import { getToken } from './auth'
+import type { SSEEvent } from '../types/api'
 
-export type SSEEventHandler = (event: SSEEvent) => void;
-export type SSEErrorHandler = (error: Event | Error) => void;
+export type SSEEventHandler = (event: SSEEvent) => void
+export type SSEErrorHandler = (error: Event | Error) => void
 
 export interface SSEClientOptions {
-  /** Endpoint path. Defaults to "/api/events". */
-  path?: string;
-  /** Delay in ms before attempting reconnect. Doubles on each failure up to maxReconnectDelay. */
-  reconnectDelay?: number;
-  /** Maximum reconnect delay in ms. */
-  maxReconnectDelay?: number;
-  /** Set to false to disable auto-reconnect. Default true. */
-  autoReconnect?: boolean;
+  path?: string
+  reconnectDelay?: number
+  maxReconnectDelay?: number
+  autoReconnect?: boolean
 }
 
-const DEFAULT_RECONNECT_DELAY = 1000;
-const MAX_RECONNECT_DELAY = 30000;
+const DEFAULT_RECONNECT_DELAY = 1000
+const MAX_RECONNECT_DELAY = 30000
 
-/**
- * SSE client that connects to the GoClaw event stream.
- *
- * Because the native EventSource API does not support custom headers, we use
- * the fetch API with a ReadableStream to consume the text/event-stream
- * response, allowing us to pass the Authorization bearer token.
- */
 export class SSEClient {
-  private controller: AbortController | null = null;
-  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-  private currentDelay: number;
-  private intentionallyClosed = false;
+  private controller: AbortController | null = null
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null
+  private currentDelay: number
+  private intentionallyClosed = false
 
-  public onEvent: SSEEventHandler | null = null;
-  public onError: SSEErrorHandler | null = null;
-  public onConnect: (() => void) | null = null;
+  public onEvent: SSEEventHandler | null = null
+  public onError: SSEErrorHandler | null = null
+  public onConnect: (() => void) | null = null
 
-  private readonly path: string;
-  private readonly reconnectDelay: number;
-  private readonly maxReconnectDelay: number;
-  private readonly autoReconnect: boolean;
+  private readonly path: string
+  private readonly reconnectDelay: number
+  private readonly maxReconnectDelay: number
+  private readonly autoReconnect: boolean
 
   constructor(options: SSEClientOptions = {}) {
-    this.path = options.path ?? '/api/events';
-    this.reconnectDelay = options.reconnectDelay ?? DEFAULT_RECONNECT_DELAY;
-    this.maxReconnectDelay = options.maxReconnectDelay ?? MAX_RECONNECT_DELAY;
-    this.autoReconnect = options.autoReconnect ?? true;
-    this.currentDelay = this.reconnectDelay;
+    this.path = options.path ?? '/api/events'
+    this.reconnectDelay = options.reconnectDelay ?? DEFAULT_RECONNECT_DELAY
+    this.maxReconnectDelay = options.maxReconnectDelay ?? MAX_RECONNECT_DELAY
+    this.autoReconnect = options.autoReconnect ?? true
+    this.currentDelay = this.reconnectDelay
   }
 
-  /** Start consuming the event stream. */
   connect(): void {
-    this.intentionallyClosed = false;
-    this.clearReconnectTimer();
-    this.controller = new AbortController();
+    this.intentionallyClosed = false
+    this.clearReconnectTimer()
+    this.controller = new AbortController()
 
-    const token = getToken();
+    const token = getToken()
     const headers: Record<string, string> = {
       Accept: 'text/event-stream',
-    };
+    }
     if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
+      headers['Authorization'] = `Bearer ${token}`
     }
 
     fetch(this.path, {
@@ -68,118 +56,106 @@ export class SSEClient {
     })
       .then((response) => {
         if (!response.ok) {
-          throw new Error(`SSE connection failed: ${response.status}`);
+          throw new Error(`SSE connection failed: ${response.status}`)
         }
         if (!response.body) {
-          throw new Error('SSE response has no body');
+          throw new Error('SSE response has no body')
         }
 
-        this.currentDelay = this.reconnectDelay;
-        this.onConnect?.();
+        this.currentDelay = this.reconnectDelay
+        this.onConnect?.()
 
-        return this.consumeStream(response.body);
+        return this.consumeStream(response.body)
       })
       .catch((err: unknown) => {
         if (err instanceof DOMException && err.name === 'AbortError') {
-          return; // intentional disconnect
+          return
         }
-        this.onError?.(err instanceof Error ? err : new Error(String(err)));
-        this.scheduleReconnect();
-      });
+        this.onError?.(err instanceof Error ? err : new Error(String(err)))
+        this.scheduleReconnect()
+      })
   }
 
-  /** Stop consuming events without auto-reconnecting. */
   disconnect(): void {
-    this.intentionallyClosed = true;
-    this.clearReconnectTimer();
+    this.intentionallyClosed = true
+    this.clearReconnectTimer()
     if (this.controller) {
-      this.controller.abort();
-      this.controller = null;
+      this.controller.abort()
+      this.controller = null
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Stream consumption
-  // ---------------------------------------------------------------------------
-
   private async consumeStream(body: ReadableStream<Uint8Array>): Promise<void> {
-    const reader = body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
+    const reader = body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
 
     try {
       for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
+        const { done, value } = await reader.read()
+        if (done) break
 
-        buffer += decoder.decode(value, { stream: true });
+        buffer += decoder.decode(value, { stream: true })
 
-        // SSE events are separated by double newlines
-        const parts = buffer.split('\n\n');
-        buffer = parts.pop() ?? '';
+        const parts = buffer.split('\n\n')
+        buffer = parts.pop() ?? ''
 
         for (const part of parts) {
-          this.parseEvent(part);
+          this.parseEvent(part)
         }
       }
     } catch (err: unknown) {
       if (err instanceof DOMException && err.name === 'AbortError') {
-        return;
+        return
       }
-      this.onError?.(err instanceof Error ? err : new Error(String(err)));
+      this.onError?.(err instanceof Error ? err : new Error(String(err)))
     } finally {
-      reader.releaseLock();
+      reader.releaseLock()
     }
 
-    // Stream ended – schedule reconnect
-    this.scheduleReconnect();
+    this.scheduleReconnect()
   }
 
   private parseEvent(raw: string): void {
-    let eventType = 'message';
-    const dataLines: string[] = [];
+    let eventType = 'message'
+    const dataLines: string[] = []
 
     for (const line of raw.split('\n')) {
       if (line.startsWith('event:')) {
-        eventType = line.slice(6).trim();
+        eventType = line.slice(6).trim()
       } else if (line.startsWith('data:')) {
-        dataLines.push(line.slice(5).trim());
+        dataLines.push(line.slice(5).trim())
       }
-      // Ignore comments (lines starting with ':') and other fields
     }
 
-    if (dataLines.length === 0) return;
+    if (dataLines.length === 0) return
 
-    const dataStr = dataLines.join('\n');
-    let parsed: SSEEvent;
+    const dataStr = dataLines.join('\n')
+    let parsed: SSEEvent
 
     try {
-      parsed = JSON.parse(dataStr) as SSEEvent;
-      parsed.type = parsed.type ?? eventType;
+      parsed = JSON.parse(dataStr) as SSEEvent
+      parsed.type = parsed.type ?? eventType
     } catch {
-      parsed = { type: eventType, data: dataStr };
+      parsed = { type: eventType, data: dataStr }
     }
 
-    this.onEvent?.(parsed);
+    this.onEvent?.(parsed)
   }
 
-  // ---------------------------------------------------------------------------
-  // Reconnection logic
-  // ---------------------------------------------------------------------------
-
   private scheduleReconnect(): void {
-    if (this.intentionallyClosed || !this.autoReconnect) return;
+    if (this.intentionallyClosed || !this.autoReconnect) return
 
     this.reconnectTimer = setTimeout(() => {
-      this.currentDelay = Math.min(this.currentDelay * 2, this.maxReconnectDelay);
-      this.connect();
-    }, this.currentDelay);
+      this.currentDelay = Math.min(this.currentDelay * 2, this.maxReconnectDelay)
+      this.connect()
+    }, this.currentDelay)
   }
 
   private clearReconnectTimer(): void {
     if (this.reconnectTimer !== null) {
-      clearTimeout(this.reconnectTimer);
-      this.reconnectTimer = null;
+      clearTimeout(this.reconnectTimer)
+      this.reconnectTimer = null
     }
   }
 }

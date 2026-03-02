@@ -1,11 +1,11 @@
-import { ref, computed } from 'vue'
-import { getStatus } from './api'
+import { useState, useEffect } from 'react';
+import { getStatus } from './api';
 
 // ---------------------------------------------------------------------------
 // Translation dictionaries
 // ---------------------------------------------------------------------------
 
-export type Locale = 'en' | 'tr' | 'zh-CN'
+export type Locale = 'en' | 'tr' | 'zh-CN';
 
 const translations: Record<Locale, Record<string, string>> = {
   en: {
@@ -520,6 +520,7 @@ const translations: Record<Locale, Record<string, string>> = {
     'auth.logout': '退出登录',
     'auth.pairing_success': '配对成功！',
     'auth.pairing_failed': '配对失败，请重试。',
+    'auth.pairing_in_progress': '配对中...',
     'auth.enter_code': '输入配对码以连接到智能体。',
 
     // Common
@@ -556,65 +557,81 @@ const translations: Record<Locale, Record<string, string>> = {
     'health.uptime': '运行时长',
     'health.updated_at': '最后更新',
   },
-}
+};
 
 // ---------------------------------------------------------------------------
 // Current locale state
 // ---------------------------------------------------------------------------
 
-const currentLocale = ref<Locale>('en')
-
-function normalizeLocale(locale: string | undefined): Locale {
-  const lowered = locale?.toLowerCase()
-  if (lowered?.startsWith('tr')) return 'tr'
-  if (lowered === 'zh' || lowered?.startsWith('zh-')) return 'zh-CN'
-  return 'en'
-}
+let currentLocale: Locale = 'en';
 
 export function getLocale(): Locale {
-  return currentLocale.value
+  return currentLocale;
 }
 
 export function setLocale(locale: Locale): void {
-  currentLocale.value = locale
+  currentLocale = locale;
 }
 
 // ---------------------------------------------------------------------------
 // Translation function
 // ---------------------------------------------------------------------------
 
+/**
+ * Translate a key using the current locale. Returns the key itself if no
+ * translation is found.
+ */
 export function t(key: string): string {
-  return translations[currentLocale.value]?.[key] ?? translations.en[key] ?? key
+  return translations[currentLocale]?.[key] ?? translations.en[key] ?? key;
 }
 
+/**
+ * Get the translation for a specific locale. Falls back to English, then to the
+ * raw key.
+ */
 export function tLocale(key: string, locale: Locale): string {
-  return translations[locale]?.[key] ?? translations.en[key] ?? key
+  return translations[locale]?.[key] ?? translations.en[key] ?? key;
 }
 
 // ---------------------------------------------------------------------------
-// Composable for components
+// React hook
 // ---------------------------------------------------------------------------
 
-export function useI18n() {
-  const locale = computed({
-    get: () => currentLocale.value,
-    set: (val: Locale) => { currentLocale.value = val }
-  })
+function normalizeLocale(locale: string | undefined): Locale {
+  const lowered = locale?.toLowerCase();
+  if (lowered?.startsWith('tr')) return 'tr';
+  if (lowered === 'zh' || lowered?.startsWith('zh-')) return 'zh-CN';
+  return 'en';
+}
 
-  // Initialize locale from API
-  const initLocale = async () => {
-    try {
-      const status = await getStatus()
-      const detected = normalizeLocale(status.locale)
-      currentLocale.value = detected
-    } catch {
-      // Keep default locale on error
-    }
-  }
+/**
+ * React hook that fetches the locale from /api/status on mount and keeps the
+ * i18n module in sync. Returns the current locale and a `t` helper bound to it.
+ */
+export function useLocale(): { locale: Locale; t: (key: string) => string } {
+  const [locale, setLocaleState] = useState<Locale>(currentLocale);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    getStatus()
+      .then((status) => {
+        if (cancelled) return;
+        const detected = normalizeLocale(status.locale);
+        setLocale(detected);
+        setLocaleState(detected);
+      })
+      .catch(() => {
+        // Keep default locale on error
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return {
     locale,
-    t,
-    initLocale
-  }
+    t: (key: string) => tLocale(key, locale),
+  };
 }
