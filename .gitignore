@@ -1,9 +1,12 @@
 goclaw
 *.exe
-node_modules
+node_modules/*
 web/dist
 web/dist2
 .DS_Store
 .vscode
-.yarn
+.yarn/*
 .yarnrc.yml
+.pnpm-lock.yaml
+.pnp.js
+yarn.lock
