@@ -1,0 +1,12 @@
+{
+  "name": "email-sender",
+  "version": "1.0.0",
+  "description": "通过 SMTP 发送邮件",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "nodemailer": "^6.9.8"
+  }
+}

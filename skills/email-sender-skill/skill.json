@@ -1,0 +1,31 @@
+{
+  "name": "email-sender",
+  "description": "使用 nodemailer 通过 SMTP 发送邮件",
+  "version": "1.0.0",
+  "commands": [
+    {
+      "name": "email_send",
+      "description": "发送邮件到指定收件人",
+      "parameters": [
+        {
+          "name": "recipient",
+          "type": "string",
+          "description": "收件人邮箱地址",
+          "required": true
+        },
+        {
+          "name": "subject",
+          "type": "string",
+          "description": "邮件主题",
+          "required": true
+        },
+        {
+          "name": "body",
+          "type": "string",
+          "description": "邮件正文内容",
+          "required": true
+        }
+      ]
+    }
+  ]
+}
