@@ -1,0 +1,23 @@
+{
+  "name": "stock-analyzer-skill",
+  "version": "1.0.0",
+  "description": "全球股票综合分析工具 - 支持A股、港股、美股",
+  "main": "index.js",
+  "scripts": {
+    "test": "node index.js --stock 600519 --market sh",
+    "analyze": "node index.js"
+  },
+  "keywords": [
+    "stock",
+    "analysis",
+    "finance",
+    "A股",
+    "港股",
+    "美股"
+  ],
+  "author": "GoClaw Team",
+  "license": "MIT",
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}
