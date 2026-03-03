@@ -1,3 +1,7 @@
+# GoClaw
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 GoClaw是基于ZeroClaw的GoLang语言实现版本，并对web端进行了中文化处理
 
 1.模型选择上可以选择Gitee AI中的模型(有免费)
