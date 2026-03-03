@@ -256,9 +256,45 @@ func (a *Agent) ProcessMessage(ctx context.Context, message string) (*types.Chat
 				},
 			})
 		}
+		// Call LLM again with tool results - build full conversation context
+		responseText := ""
+		if response.Text != nil {
+			responseText = *response.Text
+		}
 
-		// Call LLM again with tool results
-		// TODO: Implement multi-turn tool calling
+		// Build messages for second call
+		// Use simple text format for tool results - works with any provider
+		messages := []types.ChatMessage{
+			{Role: types.RoleSystem, Content: prompt},
+			{Role: types.RoleUser, Content: message},
+		}
+
+		// Add assistant message with tool call info
+		if len(response.ToolCalls) > 0 {
+			messages = append(messages, types.ChatMessage{
+				Role:    types.RoleAssistant,
+				Content: responseText,
+			})
+
+			// Add tool results as a user message (simple text format)
+			var toolResultsText string
+			for _, result := range toolResults {
+				toolResultsText += result.Output + "\n\n"
+			}
+
+			messages = append(messages, types.ChatMessage{
+				Role:    types.RoleUser,
+				Content: "Tool results:\n" + toolResultsText,
+			})
+		}
+
+		response, err = a.provider.Chat(ctx, &providers.ChatRequest{
+			Messages: messages,
+			Tools:    a.toolSpecs,
+		}, a.modelName, a.temperature)
+		if err != nil {
+			return nil, fmt.Errorf("failed to call LLM with tool results: %w", err)
+		}
 	}
 
 	// Add assistant response to history
