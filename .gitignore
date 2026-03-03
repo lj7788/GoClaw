@@ -1,4 +1,5 @@
 goclaw
+goclaw*
 *.exe
 node_modules
 web/dist
