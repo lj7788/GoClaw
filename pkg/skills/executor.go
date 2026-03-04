@@ -46,14 +46,31 @@ func (e *SkillToolExecutor) Description() string {
 func (e *SkillToolExecutor) ParametersSchema() json.RawMessage {
 	schema := map[string]interface{}{
 		"type": "object",
-		"properties": map[string]interface{}{
-			"_": map[string]string{
-				"type":        "string",
-				"description": "Tool execution (handled internally)",
-			},
-		},
+		"properties": map[string]interface{}{},
 	}
 
+	// Add parameters from tool definition if available
+	if len(e.tool.Parameters) > 0 {
+		properties := make(map[string]interface{})
+		required := []string{}
+		for _, param := range e.tool.Parameters {
+			properties[param.Name] = map[string]interface{}{
+				"type":        param.Type,
+				"description": param.Description,
+			}
+			if param.Required {
+				required = append(required, param.Name)
+			}
+		}
+		schema["properties"] = properties
+		if len(required) > 0 {
+			schema["required"] = required
+		}
+		data, _ := json.Marshal(schema)
+		return json.RawMessage(data)
+	}
+
+	// Fallback to default schema
 	switch e.tool.Kind {
 	case "shell":
 		schema["properties"] = map[string]interface{}{
@@ -124,7 +141,7 @@ func (e *SkillToolExecutor) Execute(ctx context.Context, args map[string]interfa
 func (e *SkillToolExecutor) executeShell(ctx context.Context, args map[string]interface{}) (*tools.ToolResult, error) {
 	command := e.tool.Command
 
-	// If args contain a command, use it instead
+	// If args contain a command, use it instead (for backward compatibility)
 	if cmd, ok := args["command"].(string); ok && cmd != "" {
 		command = cmd
 	}
@@ -138,10 +155,13 @@ func (e *SkillToolExecutor) executeShell(ctx context.Context, args map[string]in
 	}
 
 	// Support template substitution from args
+	fmt.Printf("[DEBUG] Original command: %s\n", command)
+	fmt.Printf("[DEBUG] Args: %+v\n", args)
 	for k, v := range args {
 		placeholder := "{{" + k + "}}"
 		command = strings.ReplaceAll(command, placeholder, fmt.Sprintf("%v", v))
 	}
+	fmt.Printf("[DEBUG] Substituted command: %s\n", command)
 
 	parts := strings.Fields(command)
 	if len(parts) == 0 {
@@ -152,8 +172,15 @@ func (e *SkillToolExecutor) executeShell(ctx context.Context, args map[string]in
 		}, nil
 	}
 
+	// Set working directory to skill directory
 	cmd := exec.CommandContext(ctx, parts[0], parts[1:]...)
+	if e.skillDir != "" {
+		cmd.Dir = e.skillDir
+	}
+	
 	output, err := cmd.CombinedOutput()
+	fmt.Printf("[DEBUG] Command output: %s\n", string(output))
+	fmt.Printf("[DEBUG] Command error: %v\n", err)
 
 	if err != nil {
 		return &tools.ToolResult{

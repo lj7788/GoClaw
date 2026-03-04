@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"log"
 
@@ -9,77 +8,45 @@ import (
 )
 
 func main() {
-	// 创建 skill loader 并加载 skills
-	loader := skills.NewSkillLoader(filepath.Join(os.Getenv("HOME"), ".zeroclaw/workspace/skills"))
+	// 创建技能加载器
+	skillsDir := "/Users/haha/.zeroclaw/workspace/skills"
+	loader := skills.NewSkillLoader(skillsDir)
 
+	// 加载所有技能
 	if err := loader.LoadSkills(); err != nil {
 		log.Fatalf("Failed to load skills: %v", err)
 	}
 
-	// 列出所有加载的 skills
+	// 列出所有技能
 	allSkills := loader.ListSkills()
-	fmt.Printf("Loaded %d skills:\n", len(allSkills))
-	for _, s := range allSkills {
-		fmt.Printf("  - %s: %s (version: %s)\n", s.Name, s.Description, s.Version)
-		if len(s.Tools) > 0 {
-			fmt.Printf("    Tools:\n")
-			for _, t := range s.Tools {
-				fmt.Printf("      - %s (%s): %s\n", t.Name, t.Kind, t.Description)
-			}
-		}
-	}
-	fmt.Println()
-
-	// 测试 hello-world skill 的工具
+	fmt.Printf("Found %d skills:\n", len(allSkills))
 	for _, skill := range allSkills {
-		if skill.Name == "hello-world" {
-			fmt.Printf("Testing skill: %s\n\n", skill.Name)
+		fmt.Printf("- %s: %s\n", skill.Name, skill.Description)
+	}
 
-			for _, tool := range skill.Tools {
-				testTool(skill, tool)
+	// 测试获取特定技能
+	if skill, exists := loader.GetSkill("stock-analyzer-skill"); exists {
+		fmt.Printf("\nStock Analyzer Skill Details:\n")
+		fmt.Printf("Name: %s\n", skill.Name)
+		fmt.Printf("Description: %s\n", skill.Description)
+		fmt.Printf("Version: %s\n", skill.Version)
+		fmt.Printf("Commands: %d\n", len(skill.Commands))
+		for _, cmd := range skill.Commands {
+			fmt.Printf("  - %s: %s\n", cmd.Name, cmd.Description)
+			if len(cmd.Parameters) > 0 {
+				fmt.Printf("    Parameters:\n")
+				for _, param := range cmd.Parameters {
+					required := ""
+					if param.Required {
+						required = " (required)"
+					}
+					fmt.Printf("      - %s: %s%s\n", param.Name, param.Description, required)
+				}
 			}
 		}
-	}
-}
-
-func testTool(skill *skills.Skill, tool skills.SkillTool) {
-	fmt.Printf("=== Testing tool: %s:%s ===\n", skill.Name, tool.Name)
-	fmt.Printf("Kind: %s\n", tool.Kind)
-	fmt.Printf("Command: %s\n", tool.Command)
-
-	executor := skills.NewSkillToolExecutor(skill, tool, "")
-
-	ctx := context.Background()
-
-	// 根据工具类型构造不同的参数
-	var args map[string]interface{}
-	switch tool.Kind {
-	case "shell":
-		if tool.Name == "greet" {
-			args = map[string]interface{}{
-				"name": "World",
-			}
-		} else {
-			args = map[string]interface{}{}
+		fmt.Printf("Tools: %d\n", len(skill.Tools))
+		for _, tool := range skill.Tools {
+			fmt.Printf("  - %s: %s (kind: %s)\n", tool.Name, tool.Description, tool.Kind)
 		}
-	case "http":
-		args = map[string]interface{}{
-			"path": "/get",
-		}
-	case "script":
-		args = map[string]interface{}{}
 	}
-
-	result, err := executor.Execute(ctx, args)
-	if err != nil {
-		fmt.Printf("Error: %v\n", err)
-		return
-	}
-
-	fmt.Printf("Success: %v\n", result.Success)
-	fmt.Printf("Output: %s\n", result.Output)
-	if result.Error != "" {
-		fmt.Printf("Error: %s\n", result.Error)
-	}
-	fmt.Println()
 }

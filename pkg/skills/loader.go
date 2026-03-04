@@ -1,6 +1,7 @@
 package skills
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -44,6 +45,7 @@ type SkillTool struct {
 	Kind        string            `json:"kind"` // "shell", "http", "script"
 	Command     string            `json:"command"`
 	Args        map[string]string `json:"args,omitempty"`
+	Parameters  []SkillParameter  `json:"parameters,omitempty"`
 }
 
 type SkillLoader struct {
@@ -90,7 +92,22 @@ func (l *SkillLoader) LoadSkills() error {
 		jsonPath := filepath.Join(skillPath, "skill.json")
 		if data, err := os.ReadFile(jsonPath); err == nil {
 			var skill Skill
-			if err := json.Unmarshal(data, &skill); err == nil {
+			decoder := json.NewDecoder(bytes.NewReader(data))
+			decoder.DisallowUnknownFields()
+			if err := decoder.Decode(&skill); err == nil {
+				// Convert commands to tools if tools are not provided
+				if len(skill.Tools) == 0 && len(skill.Commands) > 0 {
+					skill.Tools = make([]SkillTool, 0, len(skill.Commands))
+					for _, cmd := range skill.Commands {
+						tool := SkillTool{
+							Name:        cmd.Name,
+							Description: cmd.Description,
+							Kind:        "shell",
+							Command:      fmt.Sprintf("./%s.sh", cmd.Name),
+						}
+						skill.Tools = append(skill.Tools, tool)
+					}
+				}
 				l.mu.Lock()
 				l.skills[skill.Name] = &skill
 				l.mu.Unlock()
@@ -128,7 +145,8 @@ func (l *SkillLoader) LoadSkills() error {
 // SkillManifest represents a skill loaded from SKILL.toml
 type SkillManifest struct {
 	Skill   SkillMeta   `json:"skill"`
-	Tools   []SkillTool `json:"tools,omitempty"`
+	Commands []SkillCommand `json:"commands,omitempty"`
+	Tools   []SkillTool   `json:"tools,omitempty"`
 	Prompts []string    `json:"prompts,omitempty"`
 }
 
@@ -145,11 +163,29 @@ func (m *SkillManifest) toSkill() *Skill {
 	if version == "" {
 		version = "0.1.0"
 	}
+
+	// Convert commands to tools if tools are not provided
+	tools := m.Tools
+	if len(tools) == 0 && len(m.Commands) > 0 {
+		tools = make([]SkillTool, 0, len(m.Commands))
+		for _, cmd := range m.Commands {
+			tool := SkillTool{
+				Name:        cmd.Name,
+				Description: cmd.Description,
+				Kind:        "shell",
+				Command:      fmt.Sprintf("./%s.sh", cmd.Name),
+				Parameters:  cmd.Parameters,
+			}
+			tools = append(tools, tool)
+		}
+	}
+
 	return &Skill{
 		Name:        m.Skill.Name,
 		Description: m.Skill.Description,
 		Version:     version,
-		Tools:       m.Tools,
+		Commands:    m.Commands,
+		Tools:       tools,
 		Prompts:     m.Prompts,
 	}
 }
@@ -169,10 +205,139 @@ func loadSkillFromMD(name string, content string) *Skill {
 		break
 	}
 
+	// Parse commands from SKILL.md
+	var commands []SkillCommand
+	var tools []SkillTool
+
+	// Look for Commands section
+	lines := strings.Split(content, "\n")
+	inCommandsSection := false
+	var currentCommand *SkillCommand
+	var currentCommandIndex = -1
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		
+		// Check if we're in the Commands section
+		if strings.HasPrefix(trimmed, "## Commands") || strings.HasPrefix(trimmed, "### Commands") {
+			inCommandsSection = true
+			continue
+		}
+		
+		// Exit commands section when we hit another major section
+		if inCommandsSection && strings.HasPrefix(trimmed, "## ") && !strings.HasPrefix(trimmed, "## Commands") {
+			inCommandsSection = false
+			continue
+		}
+
+		// Parse command definitions
+		if inCommandsSection {
+			// Look for command definition: **Command Name** (`command_name`): description
+			if strings.HasPrefix(trimmed, "- **") && (strings.Contains(trimmed, "** (") || strings.Contains(trimmed, "** (`")) {
+				// Extract command name and description
+				parts := strings.Split(trimmed, "**")
+				if len(parts) >= 3 {
+					// The command name is in parentheses in parts[2]
+					// parts[2] is like " (analyze): description" or " (`analyze`): description"
+					cmdName := ""
+					if cmdNameStart := strings.Index(parts[2], "("); cmdNameStart != -1 {
+						remaining := parts[2][cmdNameStart:]
+						if cmdNameEnd := strings.Index(remaining, ")"); cmdNameEnd != -1 {
+							cmdName = strings.TrimSpace(remaining[1:cmdNameEnd])
+						}
+					}
+					
+					cmdDesc := ""
+					if len(parts) >= 3 {
+						// Find the position of "):" or "`):" to extract description
+						descStart := strings.Index(parts[2], "):")
+						if descStart == -1 {
+							descStart = strings.Index(parts[2], "`):")
+						}
+						if descStart != -1 {
+							cmdDesc = strings.TrimSpace(parts[2][descStart+2:])
+						}
+					}
+					
+					if cmdName != "" {
+						currentCommand = &SkillCommand{
+							Name:        cmdName,
+							Description: cmdDesc,
+						}
+						commands = append(commands, *currentCommand)
+						currentCommandIndex = len(commands) - 1
+					}
+				}
+			} else if currentCommand != nil && currentCommandIndex >= 0 {
+				// Check if it's a parameters line (supports 2, 4, or 6 space indentation)
+				for strings.HasPrefix(trimmed, "  - ") {
+					trimmed = strings.TrimSpace(strings.TrimPrefix(trimmed, "  - "))
+				}
+				
+				// Skip Parameters header
+				if strings.HasPrefix(trimmed, "Parameters:") || strings.HasPrefix(trimmed, "- Parameters:") {
+					continue
+				}
+				
+				// Now check if it's a parameter line (should have colon)
+				if strings.Contains(trimmed, ":") {
+					paramParts := strings.SplitN(trimmed, ":", 2)
+					
+					if len(paramParts) == 2 {
+						paramName := strings.TrimSpace(paramParts[0])
+						paramDesc := strings.TrimSpace(paramParts[1])
+						
+						// Remove leading "- " from parameter name if present
+						if strings.HasPrefix(paramName, "- ") {
+							paramName = strings.TrimSpace(paramName[2:])
+						}
+						
+						// Remove (required) and (optional) from parameter name
+						isRequired := false
+						if strings.Contains(paramName, "(required)") || strings.Contains(paramName, "（必需）") {
+							isRequired = true
+							paramName = strings.TrimSpace(strings.Split(paramName, " (")[0])
+							paramName = strings.TrimSpace(strings.Split(paramName, "（")[0])
+						} else if strings.Contains(paramName, "(optional)") || strings.Contains(paramName, "（可选）") {
+							isRequired = false
+							paramName = strings.TrimSpace(strings.Split(paramName, " (")[0])
+							paramName = strings.TrimSpace(strings.Split(paramName, "（")[0])
+						}
+						
+						newParam := SkillParameter{
+							Name:        paramName,
+							Type:        "string",
+							Description: paramDesc,
+							Required:    isRequired,
+						}
+						currentCommand.Parameters = append(currentCommand.Parameters, newParam)
+						
+						// Update the command in the commands slice
+						commands[currentCommandIndex] = *currentCommand
+					}
+				}
+			}
+		}
+	}
+
+	// Create tools from commands
+	for _, cmd := range commands {
+		tool := SkillTool{
+			Name:        cmd.Name,
+			Description: cmd.Description,
+			Kind:        "shell",
+			Command:      fmt.Sprintf("./%s.sh", cmd.Name),
+			Parameters:  cmd.Parameters,
+		}
+		tools = append(tools, tool)
+	}
+
 	return &Skill{
 		Name:        name,
 		Description: desc,
 		Version:     "0.1.0",
+		Commands:    commands,
+		Tools:       tools,
 		Prompts:     []string{content},
 	}
 }

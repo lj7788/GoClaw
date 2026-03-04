@@ -215,12 +215,20 @@ func (b *AgentBuilder) Build() (*Agent, error) {
 			return nil, fmt.Errorf("failed to load skills: %w", err)
 		}
 		loadedSkills := b.agent.skillLoader.ListSkills()
+		fmt.Printf("[DEBUG] Loaded %d skills\n", len(loadedSkills))
+		for _, skill := range loadedSkills {
+			fmt.Printf("[DEBUG] Skill: %s, Tools: %d\n", skill.Name, len(skill.Tools))
+		}
 
 		// Add skills to agent
 		b.agent.skills = append(b.agent.skills, loadedSkills...)
 
 		// Convert skill tools to agent tools and register
 		skillTools := skills.ConvertSkillToolsToTools(loadedSkills, b.agent.skillLoader.GetSkillsDir())
+		fmt.Printf("[DEBUG] Converted %d skill tools to agent tools\n", len(skillTools))
+		for _, tool := range skillTools {
+			fmt.Printf("[DEBUG] Tool: %s\n", tool.Name())
+		}
 		b.agent.tools = append(b.agent.tools, skillTools...)
 
 		// Generate tool specs for skill tools
