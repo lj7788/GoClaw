@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -346,8 +347,9 @@ func ConvertSkillToolsToTools(skills []*Skill, skillsDir string) []tools.Tool {
 	var result []tools.Tool
 
 	for _, skill := range skills {
+		skillDir := filepath.Join(skillsDir, skill.Name)
 		for _, tool := range skill.Tools {
-			result = append(result, NewSkillToolExecutor(skill, tool, skillsDir))
+			result = append(result, NewSkillToolExecutor(skill, tool, skillDir))
 		}
 	}
 
