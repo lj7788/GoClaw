@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 
 	"github.com/zeroclaw-labs/goclaw/pkg/tools"
 	"github.com/zeroclaw-labs/goclaw/pkg/types"
@@ -81,7 +82,17 @@ func (d *DefaultToolDispatcher) executeTool(ctx context.Context, call types.Tool
 
 	// Execute the tool
 	var args map[string]interface{}
-	json.Unmarshal(call.Arguments, &args)
+	log.Printf("Raw arguments: %s", string(call.Arguments))
+	if err := json.Unmarshal(call.Arguments, &args); err != nil {
+		log.Printf("Failed to unmarshal arguments: %v", err)
+		return ToolExecutionResult{
+			ToolCallID: call.ID,
+			Output:     fmt.Sprintf("Error parsing arguments: %v", err),
+			Success:    false,
+			Error:      err.Error(),
+		}, nil
+	}
+	log.Printf("Parsed arguments: %v", args)
 	result, err := foundTool.Execute(ctx, args)
 	if err != nil {
 		return ToolExecutionResult{

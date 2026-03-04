@@ -282,7 +282,7 @@ func (a *Agent) ProcessMessage(ctx context.Context, message string) (*types.Chat
 	if response.HasToolCalls() {
 		log.Printf("Tool calls count: %d", len(response.ToolCalls))
 		for i, toolCall := range response.ToolCalls {
-			log.Printf("  Tool call %d: %s, args: %v", i+1, toolCall.Name, toolCall.Arguments)
+			log.Printf("  Tool call %d: %s, args: %v (type: %T)", i+1, toolCall.Name, toolCall.Arguments, toolCall.Arguments)
 		}
 	}
 
