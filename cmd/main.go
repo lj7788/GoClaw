@@ -522,6 +522,7 @@ var daemonCmd = &cobra.Command{
 
 		// Get skills directory from config
 		skillsDir := cfg.GetSkillsDir()
+		log.Printf("Skills directory: %s", skillsDir)
 
 		// Add skill-based tools
 		agentTools = append(agentTools,
@@ -529,18 +530,26 @@ var daemonCmd = &cobra.Command{
 			//tools.NewStockAnalyzerTool(skillsDir),
 		)
 
+		log.Printf("Creating skill loader with directory: %s", skillsDir)
+		skillLoader := skills.NewSkillLoader(skillsDir)
+		log.Printf("Skill loader created: %v", skillLoader)
+
+		log.Printf("Building agent...")
 		agt, err := agent.NewAgentBuilder().
 			WithProvider(providerInstance).
 			WithModelName(modelToUse).
 			WithMemory(agent.NewNoneMemoryBackend()).
 			WithTools(agentTools).
-			WithSkillLoader(skills.NewSkillLoader(skillsDir)).
+			WithSkillLoader(skillLoader).
 			Build()
 		if err != nil {
+			log.Printf("Failed to build agent: %v", err)
 			return fmt.Errorf("failed to build agent: %w", err)
 		}
+		log.Printf("Agent built successfully")
 
 		addr := ":" + daemonPort
+		log.Printf("Creating gateway server on %s", addr)
 	srv := gateway.NewServer(addr, agt, cfg.Gateway.StaticDir)
 
 		if err := srv.Start(ctx); err != nil {
