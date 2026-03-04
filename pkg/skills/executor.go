@@ -155,13 +155,16 @@ func (e *SkillToolExecutor) executeShell(ctx context.Context, args map[string]in
 	}
 
 	// Support template substitution from args
-	fmt.Printf("[DEBUG] Original command: %s\n", command)
-	fmt.Printf("[DEBUG] Args: %+v\n", args)
+	// Add default values for missing parameters
+	for _, param := range e.tool.Parameters {
+		if _, exists := args[param.Name]; !exists && param.Default != "" {
+			args[param.Name] = param.Default
+		}
+	}
 	for k, v := range args {
 		placeholder := "{{" + k + "}}"
 		command = strings.ReplaceAll(command, placeholder, fmt.Sprintf("%v", v))
 	}
-	fmt.Printf("[DEBUG] Substituted command: %s\n", command)
 
 	parts := strings.Fields(command)
 	if len(parts) == 0 {
