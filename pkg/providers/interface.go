@@ -63,6 +63,7 @@ func SupportedProviders() []string {
 		"gemini",
 		"glm",
 		"ollama",
+		"bailian",
 	}
 }
 
@@ -97,5 +98,12 @@ func init() {
 	})
 	Register("ollama", func(config map[string]string) (Provider, error) {
 		return NewOllamaProvider(), nil
+	})
+	Register("bailian", func(config map[string]string) (Provider, error) {
+		apiKey := config["api_key"]
+		if apiKey == "" {
+			return nil, nil
+		}
+		return NewBailianProvider(apiKey), nil
 	})
 }

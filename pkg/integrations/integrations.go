@@ -81,6 +81,8 @@ func allIntegrations() []IntegrationEntry {
 		{Name: "Together AI", Description: "Llama 3.3 70B Turbo 和开源模型托管", Category: CategoryAiModel, Status: StatusAvailable},
 		{Name: "Fireworks AI", Description: "DeepSeek / Llama 高吞吐量推理", Category: CategoryAiModel, Status: StatusAvailable},
 		{Name: "Cohere", Description: "Command R+ (2024年8月) 和嵌入模型", Category: CategoryAiModel, Status: StatusAvailable},
+		{Name: "Bailian", Description: "阿里云百炼、通义千问系列模型、Coding Plan Lite", Category: CategoryAiModel, Status: StatusAvailable},
+		{Name: "Gitee AI", Description: "Gitee AI 平台、GLM 系列模型", Category: CategoryAiModel, Status: StatusAvailable},
 
 		// ── Productivity ────────────────────────────────────────
 		{Name: "GitHub", Description: "代码、问题、PR", Category: CategoryProductivity, Status: StatusComingSoon},
