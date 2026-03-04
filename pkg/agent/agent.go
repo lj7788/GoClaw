@@ -4,6 +4,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"log"
 	"sync"
 
 	"github.com/zeroclaw-labs/goclaw/pkg/providers"
