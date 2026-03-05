@@ -11,7 +11,23 @@ import (
 	"time"
 
 	_ "modernc.org/sqlite"
+	"strings"
 )
+
+func escapeFTSQuery(query string) string {
+	specialChars := []string{"\"", "*", "(", ")", "-", "+", "~", "<", ">", "@", ":"}
+	escaped := query
+	for _, char := range specialChars {
+		escaped = strings.ReplaceAll(escaped, char, " ")
+	}
+	
+	words := strings.Fields(escaped)
+	if len(words) == 0 {
+		return query
+	}
+	
+	return strings.Join(words, " ")
+}
 
 type SQLiteMemoryBackend struct {
 	dbPath     string
@@ -326,6 +342,8 @@ func (m *SQLiteMemoryBackend) Import(ctx context.Context, path string) error {
 func (m *SQLiteMemoryBackend) searchFTS(ctx context.Context, query string, limit int, category *string) ([]MemoryEntry, error) {
 	entries := []MemoryEntry{}
 
+	escapedQuery := escapeFTSQuery(query)
+
 	sqlQuery := `
 		SELECT m.id, m.key, m.content, m.category, m.created_at, m.updated_at,
 			   bm25(memories_fts) as score
@@ -333,7 +351,7 @@ func (m *SQLiteMemoryBackend) searchFTS(ctx context.Context, query string, limit
 		JOIN memories_fts fts ON m.rowid = fts.rowid
 		WHERE memories_fts MATCH ?
 	`
-	args := []interface{}{query}
+	args := []interface{}{escapedQuery}
 
 	if category != nil {
 		sqlQuery += ` AND m.category = ?`
