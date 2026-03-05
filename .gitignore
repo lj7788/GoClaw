@@ -11,3 +11,4 @@ yarn.lock
 .yarn.lock
 .yarnrc.yml
 images/
+web/.pnp.cjs
