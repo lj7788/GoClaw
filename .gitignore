@@ -5,3 +5,9 @@ node_modules
 web/dist
 web/dist2
 .DS_Store
+web/.yarn
+web/yarn.lock
+yarn.lock
+.yarn.lock
+.yarnrc.yml
+images/
