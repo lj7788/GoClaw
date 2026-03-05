@@ -181,6 +181,94 @@ A股分析
 美股分析
 ```
 
+### 3. 多技能协同执行
+
+GoClaw 支持多技能自动协同执行，Agent 可以智能识别用户需求并自动调用多个技能完成任务。
+
+#### 示例：股票分析 + 邮件发送
+
+```
+帮我分析一下爱尔眼科这个股票，把结果发到我的邮箱
+```
+
+Agent 会自动执行以下步骤：
+1. 使用股票分析技能获取爱尔眼科的详细数据
+2. 从记忆体中搜索并获取用户的邮箱地址
+3. 使用邮件发送技能将分析报告发送到邮箱
+
+#### 记忆体功能
+
+GoClaw 内置智能记忆体系统，支持：
+- **自动存储**：对话内容自动保存到 SQLite 记忆体
+- **智能检索**：基于 FTS5 全文搜索，快速检索相关信息
+- **上下文关联**：Agent 可以根据上下文自动查询相关记忆
+
+#### 存储邮箱地址
+
+通过 HTTP API 存储邮箱地址：
+
+```bash
+curl -X POST http://localhost:4096/api/memory \
+  -H "Content-Type: application/json" \
+  -d '{"key":"my_email","content":"email:270901361@qq.com","category":"context"}'
+```
+
+#### 查询记忆体
+
+```bash
+# 查询所有记忆体
+curl http://localhost:4096/api/memory
+
+# 删除特定记忆体
+curl -X DELETE http://localhost:4096/api/memory/my_email
+```
+
+#### 智能记忆体查询
+
+当用户提到"邮箱"、"邮件"等关键词时，Agent 会自动使用 `memory_recall` 工具搜索记忆体中的邮箱地址，无需用户重复提供。
+
+### 4. 记忆体 API
+
+#### 添加记忆体
+
+```bash
+curl -X POST http://localhost:4096/api/memory \
+  -H "Content-Type: application/json" \
+  -d '{
+    "key": "user_preference",
+    "content": "我喜欢技术类股票",
+    "category": "preference"
+  }'
+```
+
+#### 查询记忆体
+
+```bash
+# 获取所有记忆体
+curl http://localhost:4096/api/memory
+
+# 返回格式
+{
+  "count": 2,
+  "entries": [
+    {
+      "id": "my_email",
+      "key": "my_email",
+      "content": "email:270901361@qq.com",
+      "category": "context",
+      "created_at": "2026-03-05T01:08:17.071233Z",
+      "updated_at": "2026-03-05T01:15:05.344436Z"
+    }
+  ]
+}
+```
+
+#### 删除记忆体
+
+```bash
+curl -X DELETE http://localhost:4096/api/memory/my_email
+```
+
 ## 📸 效果展示
 
 ### Web 界面

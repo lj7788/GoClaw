@@ -199,7 +199,7 @@ func (b *AgentBuilder) Build() (*Agent, error) {
 		b.agent.toolDispatcher = NewDefaultToolDispatcher()
 	}
 	if b.agent.memoryLoader == nil {
-		b.agent.memoryLoader = NewDefaultMemoryLoader()
+		b.agent.memoryLoader = NewSmartMemoryLoader()
 	}
 	if b.agent.modelName == "" {
 		b.agent.modelName = "gpt-4o"
@@ -287,41 +287,71 @@ func (a *Agent) ProcessMessage(ctx context.Context, message string) (*types.Chat
 		}
 	}
 
-	// Process response
-	if response.HasToolCalls() {
-		// Execute tools
-		toolResults, err := a.toolDispatcher.ExecuteTools(ctx, response.ToolCalls, a.tools)
-		if err != nil {
-			return nil, fmt.Errorf("failed to execute tools: %w", err)
-		}
+	// Multi-step tool calling loop
+	maxIterations := 10
+	var previousToolCalls []string
+	
+	for iteration := 0; iteration < maxIterations; iteration++ {
+		log.Printf("Tool calling iteration %d/%d", iteration+1, maxIterations)
+		
+		// Process response
+		if response.HasToolCalls() {
+			// Detect repeated tool calls to prevent loops
+			currentToolCalls := make([]string, len(response.ToolCalls))
+			for i, toolCall := range response.ToolCalls {
+				currentToolCalls[i] = toolCall.Name
+			}
+			
+			if iteration > 0 {
+				isRepeated := true
+				if len(currentToolCalls) == len(previousToolCalls) {
+					for i := range currentToolCalls {
+						if currentToolCalls[i] != previousToolCalls[i] {
+							isRepeated = false
+							break
+						}
+					}
+				} else {
+					isRepeated = false
+				}
+				
+				if isRepeated {
+					log.Printf("Detected repeated tool calls, breaking loop to prevent infinite loop")
+					break
+				}
+			}
+			previousToolCalls = currentToolCalls
+			
+			// Execute tools
+			toolResults, err := a.toolDispatcher.ExecuteTools(ctx, response.ToolCalls, a.tools)
+			if err != nil {
+				return nil, fmt.Errorf("failed to execute tools: %w", err)
+			}
 
-		// Add tool results to history
-		for _, result := range toolResults {
-			a.history = append(a.history, types.ConversationMessage{
-				Type: "tool_results",
-				ToolResults: []types.ToolResultMessage{
-					{
-						ToolCallID: result.ToolCallID,
-						Content:    result.Output,
+			// Add tool results to history
+			for _, result := range toolResults {
+				a.history = append(a.history, types.ConversationMessage{
+					Type: "tool_results",
+					ToolResults: []types.ToolResultMessage{
+						{
+							ToolCallID: result.ToolCallID,
+							Content:    result.Output,
+						},
 					},
-				},
-			})
-		}
-		// Call LLM again with tool results - build full conversation context
-		responseText := ""
-		if response.Text != nil {
-			responseText = *response.Text
-		}
+				})
+			}
 
-		// Build messages for second call
-		// Use simple text format for tool results - works with any provider
-		messages := []types.ChatMessage{
-			{Role: types.RoleSystem, Content: prompt},
-			{Role: types.RoleUser, Content: message},
-		}
+			// Build messages for next iteration
+			messages := []types.ChatMessage{
+				{Role: types.RoleSystem, Content: prompt},
+				{Role: types.RoleUser, Content: message},
+			}
 
-		// Add assistant message with tool call info
-		if len(response.ToolCalls) > 0 {
+			// Add assistant message with tool call info
+			responseText := ""
+			if response.Text != nil {
+				responseText = *response.Text
+			}
 			messages = append(messages, types.ChatMessage{
 				Role:    types.RoleAssistant,
 				Content: responseText,
@@ -337,14 +367,28 @@ func (a *Agent) ProcessMessage(ctx context.Context, message string) (*types.Chat
 				Role:    types.RoleUser,
 				Content: "Tool results:\n" + toolResultsText,
 			})
+
+			// Call LLM again with tool results
+			response, err = a.provider.Chat(ctx, &providers.ChatRequest{
+				Messages: messages,
+				Tools:    a.toolSpecs,
+			}, a.modelName, a.temperature)
+			if err != nil {
+				return nil, fmt.Errorf("failed to call LLM with tool results: %w", err)
+			}
+
+			log.Printf("LLM response has tool calls: %v", response.HasToolCalls())
+			if response.HasToolCalls() {
+				log.Printf("Tool calls count: %d", len(response.ToolCalls))
+				for i, toolCall := range response.ToolCalls {
+					log.Printf("  Tool call %d: %s, args: %v (type: %T)", i+1, toolCall.Name, toolCall.Arguments, toolCall.Arguments)
+				}
+			}
 		}
 
-		response, err = a.provider.Chat(ctx, &providers.ChatRequest{
-			Messages: messages,
-			Tools:    a.toolSpecs,
-		}, a.modelName, a.temperature)
-		if err != nil {
-			return nil, fmt.Errorf("failed to call LLM with tool results: %w", err)
+		// If no more tool calls, break the loop
+		if !response.HasToolCalls() {
+			break
 		}
 	}
 

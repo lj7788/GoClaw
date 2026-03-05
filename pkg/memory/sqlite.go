@@ -15,7 +15,7 @@ import (
 )
 
 func escapeFTSQuery(query string) string {
-	specialChars := []string{"\"", "*", "(", ")", "-", "+", "~", "<", ">", "@", ":"}
+	specialChars := []string{"\"", "*", "(", ")", "-", "+", "~", "<", ">", "@", ":", "."}
 	escaped := query
 	for _, char := range specialChars {
 		escaped = strings.ReplaceAll(escaped, char, " ")
@@ -93,19 +93,17 @@ func (m *SQLiteMemoryBackend) initSchema() error {
 		`CREATE INDEX IF NOT EXISTS idx_memories_key ON memories(key)`,
 		`CREATE INDEX IF NOT EXISTS idx_memories_session ON memories(session_id)`,
 		`CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
-			key, content, content=memories, content_rowid=rowid
+			key, content
 		)`,
 		`CREATE TRIGGER IF NOT EXISTS memories_ai AFTER INSERT ON memories BEGIN
 			INSERT INTO memories_fts(rowid, key, content)
 			VALUES (new.rowid, new.key, new.content);
 		END`,
 		`CREATE TRIGGER IF NOT EXISTS memories_ad AFTER DELETE ON memories BEGIN
-			INSERT INTO memories_fts(memories_fts, rowid, key, content)
-			VALUES ('delete', old.rowid, old.key, old.content);
+			DELETE FROM memories_fts WHERE rowid = old.rowid;
 		END`,
 		`CREATE TRIGGER IF NOT EXISTS memories_au AFTER UPDATE OF key, content ON memories BEGIN
-			INSERT INTO memories_fts(memories_fts, rowid, key, content)
-			VALUES ('delete', old.rowid, old.key, old.content);
+			DELETE FROM memories_fts WHERE rowid = old.rowid;
 			INSERT INTO memories_fts(rowid, key, content)
 			VALUES (new.rowid, new.key, new.content);
 		END`,

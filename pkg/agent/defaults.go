@@ -27,6 +27,7 @@ func (b *DefaultSystemPromptBuilder) Build(context, message string) string {
 2. Use the provided tools to answer questions and complete tasks.
 3. Format responses clearly and concisely.
 4. If you don't know the answer, say so.
+5. When user asks to send something to their email or mailbox, first use the memory_recall tool to search for "email" to find their email address.
 
 Context:
 %s

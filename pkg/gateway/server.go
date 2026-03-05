@@ -17,6 +17,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/zeroclaw-labs/goclaw/pkg/agent"
 	"github.com/zeroclaw-labs/goclaw/pkg/integrations"
+	"github.com/zeroclaw-labs/goclaw/pkg/memory"
 	"github.com/zeroclaw-labs/goclaw/pkg/tools"
 	"github.com/zeroclaw-labs/goclaw/pkg/types"
 )
@@ -491,6 +492,74 @@ func (s *Server) handleAPI(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		
+		if r.Method == http.MethodPost && memoryKey == "" {
+			// Store a new memory entry
+			if r.Body == nil || r.ContentLength == 0 {
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(map[string]string{"error": "request body is required"})
+				return
+			}
+
+			if s.memoryBackend == nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				json.NewEncoder(w).Encode(map[string]string{"error": "memory backend not available"})
+				return
+			}
+
+			var req struct {
+				Key      string                 `json:"key"`
+				Content  string                 `json:"content"`
+				Category string                 `json:"category"`
+				Metadata map[string]interface{} `json:"metadata,omitempty"`
+			}
+
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+				return
+			}
+
+			// Validate required fields
+			if req.Key == "" || req.Content == "" {
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(map[string]string{"error": "key and content are required"})
+				return
+			}
+
+			// Try to store using agent.Memory interface
+			if mb, ok := s.memoryBackend.(interface {
+				Store(ctx context.Context, key, content string, category *string, metadata map[string]string) error
+			}); ok {
+				// Convert metadata
+				metadata := make(map[string]string)
+				for k, v := range req.Metadata {
+					metadata[k] = fmt.Sprintf("%v", v)
+				}
+
+				category := &req.Category
+				if req.Category == "" {
+					category = nil
+				}
+
+				if err := mb.Store(r.Context(), req.Key, req.Content, category, metadata); err != nil {
+					w.WriteHeader(http.StatusInternalServerError)
+					json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+					return
+				}
+
+				response := map[string]interface{}{
+					"status": "success",
+					"key":    req.Key,
+				}
+				json.NewEncoder(w).Encode(response)
+				return
+			}
+
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": "memory backend not available"})
+			return
+		}
+		
 		if r.Method == http.MethodDelete && memoryKey != "" {
 			if s.memoryBackend != nil {
 				if mb, ok := s.memoryBackend.(interface {
@@ -744,33 +813,190 @@ func (s *Server) handleAPI(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleMemoryAPI(w http.ResponseWriter, r *http.Request) {
-	// For GET requests, just return success
+	// For GET requests, return memory entries
 	if r.Method == http.MethodGet {
+		if s.memoryBackend == nil {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"status": "error",
+				"error":  "memory backend not configured",
+			})
+			return
+		}
+
+		// Try to get memory backend interface
+		if mem, ok := s.memoryBackend.(interface {
+			List(ctx context.Context, category *string) ([]memory.MemoryEntry, error)
+		}); ok {
+			entries, err := mem.List(r.Context(), nil)
+			if err != nil {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusInternalServerError)
+				json.NewEncoder(w).Encode(map[string]interface{}{
+					"status": "error",
+					"error":  err.Error(),
+				})
+				return
+			}
+
+			// Convert entries to map format
+			result := make([]map[string]interface{}, len(entries))
+			for i, entry := range entries {
+				result[i] = map[string]interface{}{
+					"key":        entry.Key,
+					"content":     entry.Content,
+					"category":    entry.Category,
+					"created_at":  entry.CreatedAt,
+					"updated_at":  entry.UpdatedAt,
+					"metadata":    entry.Metadata,
+				}
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"status":  "ok",
+				"entries": result,
+			})
+			return
+		}
+
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{
-			"status": "ok",
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":  "ok",
+			"entries": []map[string]interface{}{},
 		})
-		return
-	}
-	
-	// For POST/PUT/PATCH requests, try to decode the request
-	if r.Body == nil || r.ContentLength == 0 {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{
-			"status": "ok",
-		})
-		return
-	}
-	
-	var req map[string]interface{}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
+	// For POST requests, store memory entry
+	if r.Method == http.MethodPost {
+		if r.Body == nil || r.ContentLength == 0 {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"status": "error",
+				"error":  "request body is required",
+			})
+			return
+		}
+
+		if s.memoryBackend == nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"status": "error",
+				"error":  "memory backend not configured",
+			})
+			return
+		}
+
+		var req struct {
+			Key      string                 `json:"key"`
+			Content  string                 `json:"content"`
+			Category string                 `json:"category"`
+			Metadata map[string]interface{} `json:"metadata,omitempty"`
+		}
+
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"status": "error",
+				"error":  err.Error(),
+			})
+			return
+		}
+
+		// Validate required fields
+		if req.Key == "" || req.Content == "" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"status": "error",
+				"error":  "key and content are required",
+			})
+			return
+		}
+
+		// Try to store using memory backend interface
+		if mem, ok := s.memoryBackend.(interface {
+			Store(ctx context.Context, key, content string, category *string, metadata map[string]string) error
+		}); ok {
+			// Convert metadata
+			metadata := make(map[string]string)
+			for k, v := range req.Metadata {
+				metadata[k] = fmt.Sprintf("%v", v)
+			}
+
+			category := &req.Category
+			if req.Category == "" {
+				category = nil
+			}
+
+			if err := mem.Store(r.Context(), req.Key, req.Content, category, metadata); err != nil {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusInternalServerError)
+				json.NewEncoder(w).Encode(map[string]interface{}{
+					"status": "error",
+					"error":  err.Error(),
+				})
+				return
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"status": "ok",
+				"key":    req.Key,
+			})
+			return
+		}
+
+		// Try using memory.MemoryBackend interface
+		if mem, ok := s.memoryBackend.(memory.MemoryBackend); ok {
+			// Convert metadata
+			metadata := make(map[string]string)
+			for k, v := range req.Metadata {
+				metadata[k] = fmt.Sprintf("%v", v)
+			}
+
+			category := &req.Category
+			if req.Category == "" {
+				category = nil
+			}
+
+			if err := mem.Store(r.Context(), req.Key, req.Content, category, metadata); err != nil {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusInternalServerError)
+				json.NewEncoder(w).Encode(map[string]interface{}{
+					"status": "error",
+					"error":  err.Error(),
+				})
+				return
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"status": "ok",
+				"key":    req.Key,
+			})
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status": "error",
+			"error":  "memory backend does not support store operation",
+		})
+		return
+	}
+
+	// For other methods, return method not allowed
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
-		"status": "ok",
+	w.WriteHeader(http.StatusMethodNotAllowed)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status": "error",
+		"error":  "method not allowed",
 	})
 }
 
