@@ -10,6 +10,12 @@ import Config from '../pages/Config.vue'
 import Cost from '../pages/Cost.vue'
 import Logs from '../pages/Logs.vue'
 import Doctor from '../pages/Doctor.vue'
+import WechatLogin from '../pages/WechatLogin.vue'
+import UserCenter from '../pages/UserCenter.vue'
+import AdminLogin from '../pages/AdminLogin.vue'
+import Admin from '../pages/Admin.vue'
+import LoginSuccess from '../pages/LoginSuccess.vue'
+import LoginPending from '../pages/LoginPending.vue'
 
 const routes = [
   {
@@ -25,8 +31,26 @@ const routes = [
       { path: 'config', component: Config },
       { path: 'cost', component: Cost },
       { path: 'logs', component: Logs },
-      { path: 'doctor', component: Doctor }
+      { path: 'doctor', component: Doctor },
+      { path: 'user', component: UserCenter },
+      { path: 'admin', component: Admin }
     ]
+  },
+  {
+    path: '/login',
+    component: WechatLogin
+  },
+  {
+    path: '/login/success',
+    component: LoginSuccess
+  },
+  {
+    path: '/login/pending',
+    component: LoginPending
+  },
+  {
+    path: '/admin/login',
+    component: AdminLogin
   }
 ]
 

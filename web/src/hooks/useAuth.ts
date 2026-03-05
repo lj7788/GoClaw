@@ -1,11 +1,12 @@
 import { ref, onMounted, onUnmounted } from 'vue'
-import { getToken, setToken, clearToken, isAuthenticated as checkAuth } from '../lib/auth'
+import { getToken, setToken, clearToken, isAuthenticated as checkAuth, getUser, setUser, clearUser } from '../lib/auth'
 import { pair as apiPair, getPublicHealth } from '../lib/api'
 
 export function useAuth() {
   const token = ref<string | null>(getToken())
   const authenticated = ref<boolean>(checkAuth())
   const loading = ref<boolean>(!checkAuth())
+  const user = ref<any>(getUser())
 
   const pair = async (code: string): Promise<void> => {
     const { token: newToken } = await apiPair(code)
@@ -16,8 +17,10 @@ export function useAuth() {
 
   const logout = (): void => {
     clearToken()
+    clearUser()
     token.value = null
     authenticated.value = false
+    user.value = null
   }
 
   onMounted(() => {
@@ -44,6 +47,10 @@ export function useAuth() {
         token.value = t
         authenticated.value = t !== null && t.length > 0
       }
+      if (e.key === 'zeroclaw_user') {
+        const u = getUser()
+        user.value = u
+      }
     }
 
     window.addEventListener('storage', handler)
@@ -58,6 +65,7 @@ export function useAuth() {
     token,
     isAuthenticated: authenticated,
     loading,
+    user,
     pair,
     logout
   }

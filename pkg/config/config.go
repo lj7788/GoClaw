@@ -13,6 +13,7 @@ type Config struct {
 	Provider    ProviderConfig
 	Memory      MemoryConfig
 	Gateway     GatewayConfig
+	Auth        AuthConfig
 	Channels    map[string]ChannelConfig
 	ChannelsRaw string // Raw TOML content for channels
 	SkillsDir   string // Skills directory path
@@ -42,6 +43,15 @@ type GatewayConfig struct {
 	Host      string
 	Port      int
 	StaticDir string // Static files directory for web interface
+}
+
+type AuthConfig struct {
+	EnableLogin      bool   // 是否启用登录功能
+	EnableWechatLogin bool   // 是否启用微信登录
+	EnableAudit      bool   // 是否启用管理员审核
+	WechatAppID      string // 微信AppID
+	WechatAppSecret  string // 微信AppSecret
+	WechatCallbackURL string // 微信回调地址
 }
 
 type ChannelConfig map[string]string
@@ -86,6 +96,11 @@ func Default() *Config {
 			Port:      8080,
 			StaticDir: defaultStaticDir,
 		},
+		Auth: AuthConfig{
+			EnableLogin:      false, // 默认禁用登录功能
+			EnableWechatLogin: false, // 默认禁用微信登录
+			EnableAudit:      false, // 默认禁用管理员审核
+		},
 		Channels:  make(map[string]ChannelConfig),
 		SkillsDir: defaultSkillsDir,
 	}
@@ -122,6 +137,14 @@ func Load(configDir string) (*Config, error) {
 	if strings.HasPrefix(cfg.Provider.Name, "custom:") {
 		cfg.Provider.BaseURL = strings.TrimPrefix(cfg.Provider.Name, "custom:")
 	}
+
+	// 解析认证配置
+	cfg.Auth.EnableLogin = parseTomlNestedString(content, "auth.enable_login", "false") == "true"
+	cfg.Auth.EnableWechatLogin = parseTomlNestedString(content, "wechat.enabled", "false") == "true"
+	cfg.Auth.EnableAudit = parseTomlNestedString(content, "auth.enable_audit", "false") == "true"
+	cfg.Auth.WechatAppID = parseTomlNestedString(content, "wechat.app_id", "")
+	cfg.Auth.WechatAppSecret = parseTomlNestedString(content, "wechat.app_secret", "")
+	cfg.Auth.WechatCallbackURL = parseTomlNestedString(content, "wechat.redirect_uri", "")
 
 	cfg.Channels = parseChannelsConfig(content)
 
@@ -326,4 +349,9 @@ func (c *Config) GetSkillsDir() string {
 		return filepath.Join(homeDir, ".goclaw", "workspace", "skills")
 	}
 	return "."
+}
+
+// GetAuth returns the authentication configuration
+func (c *Config) GetAuth() *AuthConfig {
+	return &c.Auth
 }

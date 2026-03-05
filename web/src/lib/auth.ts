@@ -1,5 +1,8 @@
 export const TOKEN_STORAGE_KEY = 'zeroclaw_token';
+export const USER_STORAGE_KEY = 'zeroclaw_user';
+
 let inMemoryToken: string | null = null;
+let inMemoryUser: any = null;
 
 function readStorage(key: string): string | null {
   try {
@@ -74,4 +77,40 @@ export function clearToken(): void {
 export function isAuthenticated(): boolean {
   const token = getToken();
   return token !== null && token.length > 0;
+}
+
+export function getUser(): any {
+  if (inMemoryUser) {
+    return inMemoryUser;
+  }
+
+  try {
+    const userStr = sessionStorage.getItem(USER_STORAGE_KEY);
+    if (userStr) {
+      inMemoryUser = JSON.parse(userStr);
+      return inMemoryUser;
+    }
+  } catch {
+    // Ignore
+  }
+
+  return null;
+}
+
+export function setUser(user: any): void {
+  inMemoryUser = user;
+  try {
+    sessionStorage.setItem(USER_STORAGE_KEY, JSON.stringify(user));
+  } catch {
+    // sessionStorage may be unavailable in some browser privacy modes
+  }
+}
+
+export function clearUser(): void {
+  inMemoryUser = null;
+  try {
+    sessionStorage.removeItem(USER_STORAGE_KEY);
+  } catch {
+    // Ignore
+  }
 }

@@ -7,6 +7,8 @@ export default defineConfig({
   plugins: [vue(), tailwindcss()],
   server: {
     port: 5173,
+    host: '0.0.0.0',
+    allowedHosts: ['7xt72525ja38.vicp.fun'],
     proxy: {
       '/api': {
         target: 'http://localhost:4096',

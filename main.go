@@ -16,6 +16,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/zeroclaw-labs/goclaw/pkg/agent"
+	"github.com/zeroclaw-labs/goclaw/pkg/auth"
 	"github.com/zeroclaw-labs/goclaw/pkg/channels"
 	"github.com/zeroclaw-labs/goclaw/pkg/config"
 	"github.com/zeroclaw-labs/goclaw/pkg/gateway"
@@ -484,6 +485,33 @@ var agentCmd = &cobra.Command{
 		srv.SetConfig("memory_backend", cfg.Memory.Backend)
 		srv.SetMemoryBackend(memImpl)
 
+		// 初始化认证服务
+		log.Printf("开始初始化认证服务...")
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			log.Printf("获取用户主目录失败: %v", err)
+		} else {
+			log.Printf("用户主目录: %s", homeDir)
+			dbPath := filepath.Join(homeDir, ".goclaw", "auth.db")
+			log.Printf("认证数据库路径: %s", dbPath)
+			userManager, err := auth.NewUserManager(dbPath)
+			if err != nil {
+				log.Printf("创建用户管理器失败: %v", err)
+			} else {
+				log.Printf("用户管理器创建成功")
+				authService := auth.NewAuthService(
+					userManager,
+					cfg.Auth.WechatAppID,
+					cfg.Auth.WechatAppSecret,
+					cfg.Auth.WechatCallbackURL,
+				)
+				log.Printf("认证服务创建成功")
+				srv.SetAuthService(authService)
+				srv.SetUserManager(userManager)
+				log.Printf("认证服务设置完成")
+			}
+		}
+
 		if err := srv.Start(ctx); err != nil {
 			return fmt.Errorf("启动网关失败: %w", err)
 		}
@@ -615,6 +643,33 @@ var daemonCmd = &cobra.Command{
 		srv.SetConfig("model", modelToUse)
 		srv.SetConfig("temperature", cfg.Agent.Temperature)
 		srv.SetConfig("memory_backend", cfg.Memory.Backend)
+
+		// 初始化认证服务
+		log.Printf("开始初始化认证服务...")
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			log.Printf("获取用户主目录失败: %v", err)
+		} else {
+			log.Printf("用户主目录: %s", homeDir)
+			dbPath := filepath.Join(homeDir, ".goclaw", "auth.db")
+			log.Printf("认证数据库路径: %s", dbPath)
+			userManager, err := auth.NewUserManager(dbPath)
+			if err != nil {
+				log.Printf("创建用户管理器失败: %v", err)
+			} else {
+				log.Printf("用户管理器创建成功")
+				authService := auth.NewAuthService(
+					userManager,
+					cfg.Auth.WechatAppID,
+					cfg.Auth.WechatAppSecret,
+					cfg.Auth.WechatCallbackURL,
+				)
+				log.Printf("认证服务创建成功")
+				srv.SetAuthService(authService)
+				srv.SetUserManager(userManager)
+				log.Printf("认证服务设置完成")
+			}
+		}
 
 		if err := srv.Start(ctx); err != nil {
 			return fmt.Errorf("启动网关失败: %w", err)

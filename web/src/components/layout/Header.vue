@@ -11,14 +11,53 @@
         {{ localeDisplay }}
       </button>
 
-      <button
-        type="button"
-        @click="handleLogout"
-        class="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
-      >
-        <LogOut class="h-4 w-4" />
-        <span>{{ t('auth.logout') }}</span>
-      </button>
+      <template v-if="isAuthenticated">
+        <div class="flex items-center gap-3">
+          <div class="flex items-center gap-2">
+            <img
+              v-if="user?.avatar"
+              :src="user.avatar"
+              :alt="user.nickname"
+              class="w-8 h-8 rounded-full object-cover"
+            />
+            <span class="text-sm text-gray-300">{{ user?.nickname || '用户' }}</span>
+          </div>
+          <router-link
+            to="/user"
+            class="px-3 py-1.5 rounded-md text-sm text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
+          >
+            用户中心
+          </router-link>
+          <router-link
+            to="/admin"
+            class="px-3 py-1.5 rounded-md text-sm text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
+          >
+            管理后台
+          </router-link>
+          <button
+            type="button"
+            @click="handleLogout"
+            class="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
+          >
+            <LogOut class="h-4 w-4" />
+            <span>{{ t('auth.logout') }}</span>
+          </button>
+        </div>
+      </template>
+      <template v-else>
+        <router-link
+          to="/login"
+          class="px-3 py-1.5 rounded-md text-sm text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
+        >
+          微信登录
+        </router-link>
+        <router-link
+          to="/admin/login"
+          class="px-3 py-1.5 rounded-md text-sm text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
+        >
+          管理员登录
+        </router-link>
+      </template>
     </div>
   </header>
 </template>
@@ -31,7 +70,7 @@ import { useAuth } from '../../hooks/useAuth'
 import { useI18n, setLocale, type Locale } from '../../lib/i18n'
 
 const route = useRoute()
-const { logout: doLogout } = useAuth()
+const { logout: doLogout, isAuthenticated, user } = useAuth()
 const { t, locale, initLocale } = useI18n()
 
 const routeTitleKeys: Record<string, string> = {

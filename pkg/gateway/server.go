@@ -16,6 +16,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/zeroclaw-labs/goclaw/pkg/agent"
+	"github.com/zeroclaw-labs/goclaw/pkg/auth"
 	"github.com/zeroclaw-labs/goclaw/pkg/integrations"
 	"github.com/zeroclaw-labs/goclaw/pkg/memory"
 	"github.com/zeroclaw-labs/goclaw/pkg/tools"
@@ -35,6 +36,8 @@ type Server struct {
 	wsClientsMu    sync.RWMutex
 	config         map[string]interface{}
 	memoryBackend  interface{}
+	authService    *auth.AuthService
+	userManager    *auth.UserManager
 }
 
 type wsClient struct {
@@ -82,6 +85,14 @@ func NewServerWithFS(addr string, agent *agent.Agent, staticFS http.FileSystem) 
 	}
 }
 
+func (s *Server) SetAuthService(authService *auth.AuthService) {
+	s.authService = authService
+}
+
+func (s *Server) SetUserManager(userManager *auth.UserManager) {
+	s.userManager = userManager
+}
+
 func (s *Server) SetConfig(key string, value interface{}) {
 	if s.config == nil {
 		s.config = make(map[string]interface{})
@@ -103,6 +114,21 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.HandleFunc("/api/v1/models", s.handleModels)
 	mux.HandleFunc("/api/v1/embeddings", s.handleEmbeddings)
 	mux.HandleFunc("/api/sse", s.handleSSE)
+	
+	// WeChat login routes
+	mux.HandleFunc("/api/auth/wechat/login", s.handleWechatLogin)
+	mux.HandleFunc("/api/auth/wechat/callback", s.handleWechatCallback)
+	mux.HandleFunc("/api/auth/wechat/user", s.handleWechatUserInfo)
+	
+	// Admin routes
+	mux.HandleFunc("/api/auth/admin/login", s.handleAdminLogin)
+	mux.HandleFunc("/api/auth/admin/users", s.handleAdminUsers)
+	mux.HandleFunc("/api/auth/admin/users/approve", s.handleAdminApproveUser)
+	mux.HandleFunc("/api/auth/admin/password", s.handleAdminPasswordChange)
+	
+	// User routes
+	mux.HandleFunc("/api/auth/user/info", s.handleUserInfo)
+	mux.HandleFunc("/api/auth/user/update", s.handleUserUpdate)
 	
 	// WebSocket route for agent chat
 	mux.HandleFunc("/api/ws/chat", s.handleWebSocket)
@@ -1297,4 +1323,494 @@ func maskSensitiveFields(content string) string {
 	}
 	
 	return result
+}
+
+// handleWechatLogin handles WeChat login URL generation
+func (s *Server) handleWechatLogin(w http.ResponseWriter, r *http.Request) {
+	if s.authService == nil || s.authService.WechatClient == nil {
+		http.Error(w, "WeChat login not configured", http.StatusInternalServerError)
+		return
+	}
+
+	state := r.URL.Query().Get("state")
+	if state == "" {
+		state = fmt.Sprintf("%d", time.Now().UnixNano())
+	}
+
+	redirectURL := s.authService.WechatClient.GetAuthURL(state)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"login_url": redirectURL,
+		"state":     state,
+	})
+}
+
+// handleWechatCallback handles WeChat login callback
+func (s *Server) handleWechatCallback(w http.ResponseWriter, r *http.Request) {
+	if s.authService == nil || s.authService.WechatClient == nil || s.userManager == nil {
+		http.Error(w, "WeChat login not configured", http.StatusInternalServerError)
+		return
+	}
+
+	code := r.URL.Query().Get("code")
+	if code == "" {
+		http.Error(w, "Missing code parameter", http.StatusBadRequest)
+		return
+	}
+
+	// Get access token
+	wechatToken, err := s.authService.WechatClient.GetAccessToken(code)
+	if err != nil {
+		http.Error(w, "Failed to get access token: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Get user info
+	userInfo, err := s.authService.WechatClient.GetUserInfo(wechatToken.AccessToken, wechatToken.OpenID)
+	if err != nil {
+		http.Error(w, "Failed to get user info: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Check if user exists
+	existingUser, err := s.userManager.GetUserByOpenID(userInfo.OpenID)
+	if err != nil {
+		http.Error(w, "Failed to get user: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if existingUser == nil {
+		// Create new user if not exists
+		newUser, err := s.userManager.CreateUser(userInfo.OpenID, userInfo.Nickname, userInfo.HeadImgURL, "")
+		if err != nil {
+			http.Error(w, "Failed to create user: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		existingUser = newUser
+	}
+
+	// Check if user is approved
+	if existingUser.Status != 1 {
+		http.Redirect(w, r, "/#/login/pending", http.StatusFound)
+		return
+	}
+
+	// Generate token
+	authToken, err := s.authService.UserLogin(userInfo.OpenID)
+	if err != nil {
+		http.Error(w, "Failed to login: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// 广播登录成功消息给所有WebSocket客户端
+	s.wsClientsMu.RLock()
+	defer s.wsClientsMu.RUnlock()
+	
+	loginMsg := map[string]interface{}{
+		"type":  "login.success",
+		"token": authToken.Token,
+		"user": map[string]interface{}{
+			"id":       existingUser.ID,
+			"nickname": existingUser.Nickname,
+			"avatar":   existingUser.Avatar,
+			"status":   existingUser.Status,
+		},
+	}
+	
+	msgData, err := json.Marshal(loginMsg)
+	if err != nil {
+		http.Error(w, "Failed to marshal login message", http.StatusInternalServerError)
+		return
+	}
+	
+	for _, client := range s.wsClients {
+		// 直接通过WebSocket连接发送消息
+		if err := client.conn.WriteMessage(websocket.TextMessage, msgData); err != nil {
+			log.Printf("Failed to send WebSocket message: %v", err)
+		}
+	}
+	
+	// 返回登录成功响应给手机
+	http.Redirect(w, r, "/#/login/success", http.StatusFound)
+}
+
+// handleWechatUserInfo handles getting WeChat user info
+func (s *Server) handleWechatUserInfo(w http.ResponseWriter, r *http.Request) {
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
+		http.Error(w, "Missing or invalid authorization header", http.StatusUnauthorized)
+		return
+	}
+
+	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+	
+	// 验证token
+	token, err := s.authService.GetTokenInfo(tokenString)
+	if err != nil {
+		// 尝试验证管理员token
+		_, err = s.authService.ValidateAdminToken(tokenString)
+		if err != nil {
+			http.Error(w, "Invalid token: "+err.Error(), http.StatusUnauthorized)
+			return
+		}
+	}
+
+	user, err := s.userManager.GetUserByID(token.UserID)
+	if err != nil {
+		http.Error(w, "User not found", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status": "success",
+		"user": map[string]interface{}{
+			"id":       user.ID,
+			"nickname": user.Nickname,
+			"avatar":   user.Avatar,
+			"email":    user.Email,
+			"status":   user.Status,
+			"created_at": user.CreatedAt,
+		},
+	})
+}
+
+// handleAdminLogin handles admin login
+func (s *Server) handleAdminLogin(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if s.authService == nil || s.userManager == nil {
+		http.Error(w, "Admin login not configured", http.StatusInternalServerError)
+		return
+	}
+
+	var req struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// 使用AuthService的AdminLogin方法
+	token, err := s.authService.AdminLogin(req.Username, req.Password)
+	if err != nil {
+		http.Error(w, "Invalid username or password", http.StatusUnauthorized)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status": "success",
+		"token":  token.Token,
+		"admin": map[string]interface{}{
+			"id":       token.UserID,
+			"username": token.Username,
+		},
+	})
+}
+
+// handleAdminUsers handles getting users list for admin
+func (s *Server) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
+		http.Error(w, "Missing or invalid authorization header", http.StatusUnauthorized)
+		return
+	}
+
+	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+	
+	// 验证管理员token
+	_, err := s.authService.ValidateAdminToken(tokenString)
+	if err != nil {
+		http.Error(w, "Invalid or unauthorized token", http.StatusUnauthorized)
+		return
+	}
+
+	if s.userManager == nil {
+		http.Error(w, "User management not configured", http.StatusInternalServerError)
+		return
+	}
+
+	// 调用ListUsers方法获取所有用户
+	users, err := s.userManager.ListUsers(nil)
+	if err != nil {
+		http.Error(w, "Failed to get users", http.StatusInternalServerError)
+		return
+	}
+
+	userList := make([]map[string]interface{}, len(users))
+	for i, user := range users {
+		userList[i] = map[string]interface{}{
+			"id":       user.ID,
+			"nickname": user.Nickname,
+			"avatar":   user.Avatar,
+			"email":    user.Email,
+			"status":   user.Status,
+			"created_at": user.CreatedAt,
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status": "success",
+		"users":  userList,
+	})
+}
+
+// handleAdminApproveUser handles approving user
+func (s *Server) handleAdminApproveUser(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
+		http.Error(w, "Missing or invalid authorization header", http.StatusUnauthorized)
+		return
+	}
+
+	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+	
+	// 验证管理员token
+	_, err := s.authService.ValidateAdminToken(tokenString)
+	if err != nil {
+		http.Error(w, "Invalid or unauthorized token", http.StatusUnauthorized)
+		return
+	}
+
+	if s.userManager == nil {
+		http.Error(w, "User management not configured", http.StatusInternalServerError)
+		return
+	}
+
+	var req struct {
+		UserID int   `json:"user_id"`
+		Status int `json:"status"` // 1: approved, 2: rejected
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// 检查用户是否存在
+	_, err = s.userManager.GetUserByID(req.UserID)
+	if err != nil {
+		http.Error(w, "User not found", http.StatusNotFound)
+		return
+	}
+
+	// 调用UpdateUserStatus方法更新用户状态
+	err = s.userManager.UpdateUserStatus(req.UserID, req.Status)
+	if err != nil {
+		http.Error(w, "Failed to update user status", http.StatusInternalServerError)
+		return
+	}
+
+	// 重新获取更新后的用户信息
+	updatedUser, err := s.userManager.GetUserByID(req.UserID)
+	if err != nil {
+		http.Error(w, "Failed to get updated user", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status": "success",
+		"user": map[string]interface{}{
+			"id":       updatedUser.ID,
+			"nickname": updatedUser.Nickname,
+			"status":   updatedUser.Status,
+		},
+	})
+}
+
+// handleAdminPasswordChange handles admin password change
+func (s *Server) handleAdminPasswordChange(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
+		http.Error(w, "Missing or invalid authorization header", http.StatusUnauthorized)
+		return
+	}
+
+	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+	
+	// 验证管理员token
+	adminToken, err := s.authService.ValidateAdminToken(tokenString)
+	if err != nil {
+		http.Error(w, "Invalid or unauthorized token", http.StatusUnauthorized)
+		return
+	}
+
+	if s.userManager == nil {
+		http.Error(w, "Password change not configured", http.StatusInternalServerError)
+		return
+	}
+
+	var req struct {
+		OldPassword string `json:"old_password"`
+		NewPassword string `json:"new_password"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	admin, err := s.userManager.GetAdminByUsername(adminToken.Username)
+	if err != nil {
+		http.Error(w, "Admin not found", http.StatusNotFound)
+		return
+	}
+
+	// 调用CheckPasswordHash函数验证旧密码
+	if !auth.CheckPasswordHash(req.OldPassword, admin.Password) {
+		http.Error(w, "Invalid old password", http.StatusBadRequest)
+		return
+	}
+
+	// 调用HashPassword函数哈希新密码
+	hashedPassword, err := auth.HashPassword(req.NewPassword)
+	if err != nil {
+		http.Error(w, "Failed to hash password", http.StatusInternalServerError)
+		return
+	}
+
+	// 调用UpdateAdminPassword方法更新密码
+	err = s.userManager.UpdateAdminPassword(admin.ID, hashedPassword)
+	if err != nil {
+		http.Error(w, "Failed to update password", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"status": "success",
+		"message": "Password changed successfully",
+	})
+}
+
+// handleUserInfo handles getting user info
+func (s *Server) handleUserInfo(w http.ResponseWriter, r *http.Request) {
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
+		http.Error(w, "Missing or invalid authorization header", http.StatusUnauthorized)
+		return
+	}
+
+	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+	
+	// 验证用户token
+	token, err := s.authService.GetTokenInfo(tokenString)
+	if err != nil {
+		http.Error(w, "Invalid or unauthorized token", http.StatusUnauthorized)
+		return
+	}
+
+	if s.userManager == nil {
+		http.Error(w, "User management not configured", http.StatusInternalServerError)
+		return
+	}
+
+	user, err := s.userManager.GetUserByID(token.UserID)
+	if err != nil {
+		http.Error(w, "User not found", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status": "success",
+		"user": map[string]interface{}{
+			"id":       user.ID,
+			"nickname": user.Nickname,
+			"avatar":   user.Avatar,
+			"email":    user.Email,
+			"status":   user.Status,
+			"created_at": user.CreatedAt,
+		},
+	})
+}
+
+// handleUserUpdate handles updating user info
+func (s *Server) handleUserUpdate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
+		http.Error(w, "Missing or invalid authorization header", http.StatusUnauthorized)
+		return
+	}
+
+	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+	
+	// 验证用户token
+	token, err := s.authService.GetTokenInfo(tokenString)
+	if err != nil {
+		http.Error(w, "Invalid or unauthorized token", http.StatusUnauthorized)
+		return
+	}
+
+	if s.userManager == nil {
+		http.Error(w, "User management not configured", http.StatusInternalServerError)
+		return
+	}
+
+	var req struct {
+		Email  string `json:"email"`
+		Avatar string `json:"avatar"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	user, err := s.userManager.GetUserByID(token.UserID)
+	if err != nil {
+		http.Error(w, "User not found", http.StatusNotFound)
+		return
+	}
+
+	// 调用UpdateUserInfo方法更新用户信息
+	err = s.userManager.UpdateUserInfo(token.UserID, user.Nickname, req.Avatar, req.Email)
+	if err != nil {
+		http.Error(w, "Failed to update user info", http.StatusInternalServerError)
+		return
+	}
+
+	// 重新获取更新后的用户信息
+	updatedUser, err := s.userManager.GetUserByID(token.UserID)
+	if err != nil {
+		http.Error(w, "Failed to get updated user", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status": "success",
+		"user": map[string]interface{}{
+			"id":       updatedUser.ID,
+			"nickname": updatedUser.Nickname,
+			"avatar":   updatedUser.Avatar,
+			"email":    updatedUser.Email,
+			"status":   updatedUser.Status,
+		},
+	})
 }
