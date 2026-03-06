@@ -4,9 +4,51 @@
 
 配置文件位于：`~/.goclaw/config.toml`
 
-首次运行时会自动创建默认配置文件。
+首次运行时会自动创建默认配置文件，也可以运行 `go run main.go onboard` 启动配置向导进行交互式配置。
 
 ## 🔧 配置文件结构
+
+### 基础配置
+
+| 配置项 | 类型 | 默认值 | 说明 |
+|--------|------|--------|------|
+| `default_provider` | string | "openai" | 默认 AI 提供商名称 |
+| `default_model` | string | "gpt-4" | 默认使用的模型名称 |
+| `api_key` | string | - | API 密钥（建议使用环境变量） |
+| `base_url` | string | - | 自定义 API 基础 URL |
+| `default_temperature` | float64 | 0.7 | 默认温度参数（0.0-2.0） |
+| `skills_dir` | string | ~/.goclaw/workspace/skills | 技能目录路径 |
+| `static_dir` | string | ~/.goclaw/web/dist | Web 界面静态文件目录 |
+
+**示例：**
+
+**使用 Gitee AI（推荐，免费模型）：**
+```toml
+default_provider = "custom:https://ai.gitee.com/v1"
+default_model = "GLM-4.7-Flash"
+api_key = "your-gitee-api-key"
+```
+
+**使用阿里云百炼（Coding Plan Lite 支持）：**
+```toml
+default_provider = "bailian"
+default_model = "qwen-plus"
+api_key = "your-bailian-api-key"
+```
+
+**使用 OpenAI：**
+```toml
+default_provider = "openai"
+default_model = "gpt-4"
+api_key = "your-openai-api-key"
+```
+
+**使用 Ollama 本地模型：**
+```toml
+default_provider = "ollama"
+default_model = "llama3.1:8b"
+ollama_host = "http://localhost:11434"
+```
 
 ### [agent] - Agent 配置
 
@@ -14,14 +56,11 @@ Agent 行为和执行参数配置。
 
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
-| `max_tool_iterations` | int | 15 | 最大工具调用迭代次数，用于防止死循环。多步骤任务建议设置为 15-20 |
+| `max_tool_iterations` | int | 15 | 最大工具调用迭代次数，用于防止死循环 |
 | `max_history_messages` | int | 20 | 最大历史消息数量，超过后会进行压缩 |
 | `parallel_tools` | bool | false | 是否并行执行工具 |
 | `tool_dispatcher` | string | "auto" | 工具调度器类型：auto, simple, advanced |
-| `compact_context` | bool | true | 是否压缩上下文以节省token |
-| `min_relevance_score` | float64 | 0.1 | 记忆体检索的最小相关性分数（0.0-1.0） |
-| `default_model` | string | - | 默认使用的模型名称 |
-| `default_temperature` | float64 | 0.7 | 默认温度参数（0.0-2.0） |
+| `compact_context` | bool | true | 是否压缩上下文以节省 token |
 
 **示例：**
 ```toml
@@ -31,46 +70,6 @@ max_history_messages = 20
 parallel_tools = false
 tool_dispatcher = "auto"
 compact_context = true
-min_relevance_score = 0.1
-default_temperature = 0.7
-```
-
-### [provider] - AI 模型提供商配置
-
-AI 模型提供商配置。
-
-| 配置项 | 类型 | 默认值 | 说明 |
-|--------|------|--------|------|
-| `name` | string | "openai" | 提供商名称：openai, bailian, gitee, custom:URL |
-| `model` | string | "gpt-4" | 使用的模型名称 |
-| `api_key` | string | - | API 密钥（建议使用环境变量） |
-| `base_url` | string | - | 自定义 API 基础 URL |
-
-**示例：**
-
-**使用阿里云百炼（推荐）：**
-```toml
-[provider]
-name = "bailian"
-model = "qwen-plus"
-api_key = "your-bailian-api-key"
-```
-
-**使用 GiteeAI（免费模型）：**
-```toml
-[provider]
-name = "gitee"
-model = "GLM-4.7-Flash"
-url = "custom:https://ai.gitee.com/v1"
-api_key = "your-gitee-ai-api-key"
-```
-
-**使用 OpenAI：**
-```toml
-[provider]
-name = "openai"
-model = "gpt-4"
-api_key = "your-openai-api-key"
 ```
 
 ### [memory] - 记忆体配置
@@ -121,7 +120,6 @@ Web 网关服务器配置。
 |--------|------|--------|------|
 | `port` | int | 4096 | 网关服务器端口 |
 | `host` | string | "0.0.0.0" | 网关服务器监听地址 |
-| `static_dir` | string | - | 静态文件目录 |
 | `locale` | string | "zh-CN" | 界面语言 |
 | `require_pairing` | bool | false | 是否需要配对码 |
 | `allow_public_bind` | bool | false | 是否允许公网绑定 |
@@ -132,9 +130,6 @@ Web 网关服务器配置。
 | `rate_limit_max_keys` | int | 10000 | 速率限制最大键数 |
 | `idempotency_ttl_secs` | int | 300 | 幂等性 TTL（秒） |
 | `idempotency_max_keys` | int | 10000 | 幂等性最大键数 |
-| `enable_wechat_login` | bool | false | 是否启用微信登录 |
-| `wechat_app_id` | string | - | 微信 App ID |
-| `wechat_app_secret` | string | - | 微信 App Secret |
 
 **示例：**
 ```toml
@@ -143,9 +138,42 @@ port = 4096
 host = "0.0.0.0"
 locale = "zh-CN"
 require_pairing = false
-enable_wechat_login = true
-wechat_app_id = "your-wechat-app-id"
-wechat_app_secret = "your-wechat-app-secret"
+```
+
+### [wechat] - 微信登录配置
+
+微信扫码登录功能配置。
+
+| 配置项 | 类型 | 默认值 | 说明 |
+|--------|------|--------|------|
+| `enabled` | bool | false | 是否启用微信登录 |
+| `app_id` | string | - | 微信开放平台 App ID |
+| `app_secret` | string | - | 微信开放平台 App Secret |
+| `redirect_uri` | string | - | 微信登录回调地址 |
+
+**示例：**
+```toml
+[wechat]
+enabled = true
+app_id = "your-wechat-app-id"
+app_secret = "your-wechat-app-secret"
+redirect_uri = "https://your-domain.com/auth/wechat/callback"
+```
+
+### [auth] - 认证配置
+
+用户认证和权限管理配置。
+
+| 配置项 | 类型 | 默认值 | 说明 |
+|--------|------|--------|------|
+| `enable_login` | bool | false | 是否启用登录功能 |
+| `enable_audit` | bool | false | 是否启用管理员审核（新用户需审核后才能使用） |
+
+**示例：**
+```toml
+[auth]
+enable_login = true
+enable_audit = true
 ```
 
 ### [skills] - 技能配置
@@ -172,7 +200,8 @@ prompt_injection_mode = "full"
 
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
-| `enabled` | bool | true | 是否启用 CLI 渠道 |
+| `cli` | bool | true | 是否启用 CLI 渠道 |
+| `message_timeout_secs` | int | 60 | 消息超时时间（秒） |
 
 #### [channels_config.email] - 邮件渠道
 
@@ -213,7 +242,7 @@ from_address = "your-email@qq.com"
 |--------|------|--------|------|
 | `client_id` | string | - | 钉钉 Client ID |
 | `client_secret` | string | - | 钉钉 Client Secret |
-| `allowed_users` | array | [] | 允许的用户列表 |
+| `allowed_users` | array | [] | 允许的用户列表（["*"] 表示所有用户） |
 
 **示例：**
 ```toml
@@ -386,6 +415,171 @@ max_response_size = 1000000
 timeout_secs = 30
 ```
 
+### [heartbeat] - 心跳引擎配置
+
+心跳事件引擎配置。
+
+| 配置项 | 类型 | 默认值 | 说明 |
+|--------|------|--------|------|
+| `enabled` | bool | false | 是否启用心跳引擎 |
+| `interval_minutes` | int | 30 | 心跳间隔（分钟） |
+
+**示例：**
+```toml
+[heartbeat]
+enabled = false
+interval_minutes = 30
+```
+
+### [hooks] - 钩子配置
+
+事件钩子系统配置。
+
+| 配置项 | 类型 | 默认值 | 说明 |
+|--------|------|--------|------|
+| `enabled` | bool | true | 是否启用钩子系统 |
+
+**内置钩子配置：**
+```toml
+[hooks]
+enabled = true
+
+[hooks.builtin]
+command_logger = false
+```
+
+**可用事件类型：**
+- `pre_tool_exec` - 工具执行前
+- `post_tool_exec` - 工具执行后
+- `pre_agent_loop` - Agent 循环前
+- `post_agent_loop` - Agent 循环后
+- `on_error` - 错误发生时
+- `on_message` - 消息处理时
+
+### [autonomy] - 自主性配置
+
+Agent 自主性和安全配置。
+
+| 配置项 | 类型 | 默认值 | 说明 |
+|--------|------|--------|------|
+| `level` | string | "supervised" | 自主性级别：full, supervised, approve, read_only, disabled |
+| `workspace_only` | bool | true | 是否限制在工作空间内 |
+| `allowed_commands` | array | [...] | 允许执行的命令列表 |
+| `forbidden_paths` | array | [...] | 禁止访问的路径列表 |
+| `max_actions_per_hour` | int | 20 | 每小时最大操作数 |
+| `max_cost_per_day_cents` | int | 500 | 每日最大成本（美分） |
+| `require_approval_for_medium_risk` | bool | false | 中等风险操作是否需要审批 |
+| `block_high_risk_commands` | bool | true | 是否阻止高风险命令 |
+| `auto_approve` | array | [...] | 自动批准的工具列表 |
+| `always_ask` | array | [...] | 总是询问的工具列表 |
+
+**示例：**
+```toml
+[autonomy]
+level = "supervised"
+workspace_only = true
+allowed_commands = ["git", "npm", "cargo", "ls", "cat", "grep", "find"]
+forbidden_paths = ["/etc", "/root", "/home", "~/.ssh", "~/.aws"]
+max_actions_per_hour = 20
+max_cost_per_day_cents = 500
+```
+
+### [security] - 安全配置
+
+安全策略和沙箱配置。
+
+#### [security.sandbox]
+
+| 配置项 | 类型 | 默认值 | 说明 |
+|--------|------|--------|------|
+| `backend` | string | "auto" | 沙箱后端：auto, firejail, none |
+| `firejail_args` | array | [] | Firejail 额外参数 |
+
+#### [security.resources]
+
+| 配置项 | 类型 | 默认值 | 说明 |
+|--------|------|--------|------|
+| `max_memory_mb` | int | 512 | 最大内存（MB） |
+| `max_cpu_time_seconds` | int | 60 | 最大 CPU 时间（秒） |
+| `max_subprocesses` | int | 10 | 最大子进程数 |
+| `memory_monitoring` | bool | true | 是否启用内存监控 |
+
+#### [security.audit]
+
+| 配置项 | 类型 | 默认值 | 说明 |
+|--------|------|--------|------|
+| `enabled` | bool | true | 是否启用审计日志 |
+| `log_path` | string | "audit.log" | 审计日志路径 |
+| `max_size_mb` | int | 100 | 日志最大大小（MB） |
+
+**示例：**
+```toml
+[security.sandbox]
+backend = "auto"
+
+[security.resources]
+max_memory_mb = 512
+max_cpu_time_seconds = 60
+
+[security.audit]
+enabled = true
+log_path = "audit.log"
+```
+
+### [runtime] - 运行时配置
+
+运行时环境配置。
+
+| 配置项 | 类型 | 默认值 | 说明 |
+|--------|------|--------|------|
+| `kind` | string | "native" | 运行时类型：native, docker, wasm |
+
+**Docker 运行时配置：**
+```toml
+[runtime]
+kind = "docker"
+
+[runtime.docker]
+image = "alpine:3.20"
+network = "none"
+memory_limit_mb = 512
+cpu_limit = 1.0
+read_only_rootfs = true
+mount_workspace = true
+```
+
+### [observability] - 可观测性配置
+
+可观测性配置。
+
+| 配置项 | 类型 | 默认值 | 说明 |
+|--------|------|--------|------|
+| `backend` | string | "none" | 可观测性后端 |
+| `runtime_trace_mode` | string | "none" | 运行时追踪模式 |
+| `runtime_trace_path` | string | "state/runtime-trace.jsonl" | 追踪文件路径 |
+| `runtime_trace_max_entries` | int | 200 | 最大追踪条目数 |
+
+### [multimodal] - 多模态配置
+
+多模态功能配置。
+
+| 配置项 | 类型 | 默认值 | 说明 |
+|--------|------|--------|------|
+| `max_images` | int | 4 | 最大图片数 |
+| `max_image_size_mb` | int | 5 | 最大图片大小（MB） |
+| `allow_remote_fetch` | bool | false | 是否允许远程获取图片 |
+
+### [transcription] - 语音转录配置
+
+语音转文字配置。
+
+| 配置项 | 类型 | 默认值 | 说明 |
+|--------|------|--------|------|
+| `enabled` | bool | false | 是否启用语音转录 |
+| `api_url` | string | "https://api.groq.com/openai/v1/audio/transcriptions" | 转录 API 地址 |
+| `model` | string | "whisper-large-v3-turbo" | 转录模型 |
+| `max_duration_secs` | int | 120 | 最大音频时长（秒） |
+
 ## 🎯 常见配置场景
 
 ### 场景 1：多步骤任务（股票分析 + 邮件发送）
@@ -408,7 +602,23 @@ keyword_weight = 0.3
 min_relevance_score = 0.3
 ```
 
-### 场景 3：启用邮件通知
+### 场景 3：启用微信登录
+
+配置微信扫码登录：
+
+```toml
+[auth]
+enable_login = true
+enable_audit = true
+
+[wechat]
+enabled = true
+app_id = "your-wechat-app-id"
+app_secret = "your-wechat-app-secret"
+redirect_uri = "https://your-domain.com/auth/wechat/callback"
+```
+
+### 场景 4：启用邮件通知
 
 配置邮件渠道：
 
@@ -423,7 +633,7 @@ password = "your-password"
 from_address = "your-email@qq.com"
 ```
 
-### 场景 4：成本控制
+### 场景 5：成本控制
 
 启用 API 成本控制：
 
@@ -435,6 +645,17 @@ monthly_limit_usd = 100.0
 warn_at_percent = 80
 ```
 
+### 场景 6：钉钉机器人集成
+
+配置钉钉机器人：
+
+```toml
+[channels_config.dingtalk]
+client_id = "your-dingtalk-client-id"
+client_secret = "your-dingtalk-client-secret"
+allowed_users = ["*"]
+```
+
 ## 🔐 环境变量
 
 除了配置文件，也可以使用环境变量：
@@ -444,19 +665,33 @@ warn_at_percent = 80
 | `BAILIAN_API_KEY` | 阿里云百炼 API 密钥 |
 | `OPENAI_API_KEY` | OpenAI API 密钥 |
 | `GITEE_AI_API_KEY` | GiteeAI API 密钥 |
+| `ANTHROPIC_API_KEY` | Anthropic API 密钥 |
+| `GEMINI_API_KEY` | Google Gemini API 密钥 |
 
 ## 📝 配置文件示例
+
+### 最小配置（Gitee AI 免费）
+
+```toml
+default_provider = "custom:https://ai.gitee.com/v1"
+default_model = "GLM-4.7-Flash"
+api_key = "your-gitee-api-key"
+
+[gateway]
+port = 4096
+host = "127.0.0.1"
+```
 
 ### 完整配置示例
 
 ```toml
 # GoClaw Configuration
 
-[provider]
-name = "gitee"
-model = "GLM-4.7-Flash"
-url = "custom:https://ai.gitee.com/v1"
+# AI 提供商配置
+default_provider = "custom:https://ai.gitee.com/v1"
+default_model = "GLM-4.7-Flash"
 api_key = "your-api-key"
+default_temperature = 0.7
 
 [agent]
 max_tool_iterations = 15
@@ -464,8 +699,6 @@ max_history_messages = 20
 parallel_tools = false
 tool_dispatcher = "auto"
 compact_context = true
-min_relevance_score = 0.1
-default_temperature = 0.7
 
 [memory]
 backend = "sqlite"
@@ -482,9 +715,17 @@ port = 4096
 host = "0.0.0.0"
 locale = "zh-CN"
 require_pairing = false
-enable_wechat_login = true
-wechat_app_id = "your-wechat-app-id"
-wechat_app_secret = "your-wechat-app-secret"
+
+# 微信登录配置
+[wechat]
+enabled = true
+app_id = "your-wechat-app-id"
+app_secret = "your-wechat-app-secret"
+redirect_uri = "https://your-domain.com/auth/wechat/callback"
+
+[auth]
+enable_login = true
+enable_audit = true
 
 [skills]
 open_skills_enabled = false
@@ -535,6 +776,46 @@ enabled = true
 allowed_domains = ["oapi.dingtalk.com", "api.tianqiapi.com"]
 max_response_size = 1000000
 timeout_secs = 30
+
+[heartbeat]
+enabled = false
+interval_minutes = 30
+
+[hooks]
+enabled = true
+
+[hooks.builtin]
+command_logger = false
+
+[autonomy]
+level = "supervised"
+workspace_only = true
+allowed_commands = ["git", "npm", "cargo", "ls", "cat", "grep"]
+forbidden_paths = ["/etc", "/root", "~/.ssh", "~/.aws"]
+
+[security.sandbox]
+backend = "auto"
+
+[security.resources]
+max_memory_mb = 512
+max_cpu_time_seconds = 60
+
+[security.audit]
+enabled = true
+log_path = "audit.log"
+
+[runtime]
+kind = "native"
+
+[observability]
+backend = "none"
+
+[multimodal]
+max_images = 4
+max_image_size_mb = 5
+
+[transcription]
+enabled = false
 ```
 
 ## 🔄 配置重载
@@ -549,11 +830,28 @@ lsof -ti:4096 | xargs kill -9
 go run main.go gateway
 ```
 
+## 🚀 配置向导
+
+首次使用可以运行配置向导进行交互式配置：
+
+```bash
+go run main.go onboard
+```
+
+配置向导会引导你：
+1. 选择 AI 提供商（OpenAI、Anthropic、Gemini、GLM、Ollama、GiteeAI、百炼）
+2. 输入 API 密钥
+3. 选择模型
+4. 选择存储后端（无、SQLite、Qdrant）
+5. 选择要启用的通知渠道
+6. 设置工作空间目录
+
 ## 📚 相关文档
 
-- [README.md](README.md) - 项目说明
-- [README.md](#配置-ai-模型提供商) - AI 模型提供商配置
-- [README.md](#使用方法) - 使用方法
+- [README.md](readme.md) - 项目说明
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) - 系统架构
+- [docs/API.md](docs/API.md) - API 文档
+- [docs/NODES_IMPLEMENTATION.md](docs/NODES_IMPLEMENTATION.md) - 节点实现
 
 ## 💡 配置建议
 
@@ -562,6 +860,7 @@ go run main.go gateway
 3. **成本**：启用成本控制以避免意外费用
 4. **可靠性**：配置备用提供商和重试策略
 5. **记忆体**：调整向量权重和相关性分数以优化检索效果
+6. **登录认证**：生产环境建议启用登录功能保护 Web 界面
 
 ## 🆘 问题排查
 
@@ -583,3 +882,15 @@ go run main.go gateway
 1. 调整 `vector_weight` 和 `keyword_weight` 比例
 2. 降低 `min_relevance_score` 以包含更多结果
 3. 检查记忆体内容是否包含相关关键词
+
+### 微信登录失败
+
+1. 检查微信开放平台配置是否正确
+2. 确认回调地址与配置中的 `redirect_uri` 一致
+3. 确保 App ID 和 App Secret 正确
+
+### Web 界面无法访问
+
+1. 检查 `gateway.port` 和 `gateway.host` 配置
+2. 确认防火墙没有阻止端口
+3. 如果启用登录，确保认证配置正确

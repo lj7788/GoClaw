@@ -23,6 +23,7 @@ import (
 	"github.com/zeroclaw-labs/goclaw/pkg/memory"
 	"github.com/zeroclaw-labs/goclaw/pkg/onboard"
 	"github.com/zeroclaw-labs/goclaw/pkg/providers"
+	"github.com/zeroclaw-labs/goclaw/pkg/security"
 	"github.com/zeroclaw-labs/goclaw/pkg/skills"
 	"github.com/zeroclaw-labs/goclaw/pkg/tools"
 	"github.com/zeroclaw-labs/goclaw/pkg/types"
@@ -484,7 +485,17 @@ var agentCmd = &cobra.Command{
 		srv.SetConfig("temperature", cfg.Agent.Temperature)
 		srv.SetConfig("memory_backend", cfg.Memory.Backend)
 		srv.SetConfig("wechat_enabled", cfg.Auth.EnableWechatLogin)
+		srv.SetConfig("require_pairing", cfg.Gateway.RequirePairing)
+		srv.SetConfig("paired_tokens", cfg.Gateway.PairedTokens)
 		srv.SetMemoryBackend(memImpl)
+
+		// 创建配对守卫
+		if cfg.Gateway.RequirePairing {
+			pairingGuard := security.NewPairingGuard(true, []string{"*"})
+			srv.SetPairingGuard(pairingGuard)
+			log.Printf("配对码: %s", pairingGuard.PairingCode())
+			fmt.Printf("配对码: 【  %s  】\n", pairingGuard.PairingCode())
+		}
 
 		// 初始化认证服务
 		log.Printf("开始初始化认证服务...")
@@ -645,6 +656,16 @@ var daemonCmd = &cobra.Command{
 		srv.SetConfig("temperature", cfg.Agent.Temperature)
 		srv.SetConfig("memory_backend", cfg.Memory.Backend)
 		srv.SetConfig("wechat_enabled", cfg.Auth.EnableWechatLogin)
+		srv.SetConfig("require_pairing", cfg.Gateway.RequirePairing)
+		srv.SetConfig("paired_tokens", cfg.Gateway.PairedTokens)
+
+		// 创建配对守卫
+		if cfg.Gateway.RequirePairing {
+			pairingGuard := security.NewPairingGuard(true, []string{"*"})
+			srv.SetPairingGuard(pairingGuard)
+			log.Printf("配对码: %s", pairingGuard.PairingCode())
+			fmt.Printf("配对码: 【  %s  】\n", pairingGuard.PairingCode())
+		}
 
 		// 初始化认证服务
 		log.Printf("开始初始化认证服务...")

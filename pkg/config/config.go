@@ -40,9 +40,11 @@ type MemoryConfig struct {
 }
 
 type GatewayConfig struct {
-	Host      string
-	Port      int
-	StaticDir string // Static files directory for web interface
+	Host           string
+	Port           int
+	StaticDir      string // Static files directory for web interface
+	RequirePairing bool   // 是否需要配对码
+	PairedTokens   []string // 已配对的 token 列表
 }
 
 type AuthConfig struct {
@@ -129,6 +131,9 @@ func Load(configDir string) (*Config, error) {
 	cfg.Agent.MaxToolIterations = parseTomlInt(content, "max_tool_iterations", cfg.Agent.MaxToolIterations)
 	cfg.SkillsDir = parseTomlString(content, "skills_dir", cfg.SkillsDir)
 	cfg.Gateway.StaticDir = parseTomlString(content, "static_dir", cfg.Gateway.StaticDir)
+	cfg.Gateway.Port = parseTomlNestedInt(content, "gateway.port", cfg.Gateway.Port)
+	cfg.Gateway.RequirePairing = parseTomlNestedString(content, "gateway.require_pairing", "false") == "true"
+	cfg.Gateway.PairedTokens = parseTomlNestedStringArray(content, "gateway.paired_tokens", cfg.Gateway.PairedTokens)
 
 	cfg.Memory.Backend = parseTomlNestedString(content, "memory.backend", cfg.Memory.Backend)
 	cfg.Memory.Config = parseMemoryConfig(content)
@@ -354,4 +359,95 @@ func (c *Config) GetSkillsDir() string {
 // GetAuth returns the authentication configuration
 func (c *Config) GetAuth() *AuthConfig {
 	return &c.Auth
+}
+
+// parseTomlNestedInt parses a nested integer key like "gateway.port" from TOML content
+func parseTomlNestedInt(content, key string, defaultValue int) int {
+	parts := strings.Split(key, ".")
+	if len(parts) != 2 {
+		return parseTomlInt(content, key, defaultValue)
+	}
+
+	section := parts[0]
+	field := parts[1]
+
+	sectionRe := regexp.MustCompile(`(?m)^\[` + regexp.QuoteMeta(section) + `\]`)
+	sectionMatch := sectionRe.FindStringIndex(content)
+	if sectionMatch == nil {
+		return defaultValue
+	}
+
+	start := sectionMatch[1]
+
+	nextSectionRe := regexp.MustCompile(`(?m)^\[`)
+	nextMatch := nextSectionRe.FindStringIndex(content[start:])
+	var sectionContent string
+	if nextMatch != nil {
+		end := start + nextMatch[0]
+		sectionContent = content[start:end]
+	} else {
+		sectionContent = content[start:]
+	}
+
+	fieldRe := regexp.MustCompile(`(?m)^` + regexp.QuoteMeta(field) + `\s*=\s*(\d+)`)
+	fieldMatches := fieldRe.FindStringSubmatch(sectionContent)
+	if len(fieldMatches) > 1 {
+		val, err := strconv.Atoi(fieldMatches[1])
+		if err == nil {
+			return val
+		}
+	}
+
+	return defaultValue
+}
+
+// parseTomlNestedStringArray parses a nested string array key like "gateway.paired_tokens" from TOML content
+func parseTomlNestedStringArray(content, key string, defaultValue []string) []string {
+	parts := strings.Split(key, ".")
+	if len(parts) != 2 {
+		return defaultValue
+	}
+
+	section := parts[0]
+	field := parts[1]
+
+	sectionRe := regexp.MustCompile(`(?m)^\[` + regexp.QuoteMeta(section) + `\]`)
+	sectionMatch := sectionRe.FindStringIndex(content)
+	if sectionMatch == nil {
+		return defaultValue
+	}
+
+	start := sectionMatch[1]
+
+	nextSectionRe := regexp.MustCompile(`(?m)^\[`)
+	nextMatch := nextSectionRe.FindStringIndex(content[start:])
+	var sectionContent string
+	if nextMatch != nil {
+		end := start + nextMatch[0]
+		sectionContent = content[start:end]
+	} else {
+		sectionContent = content[start:]
+	}
+
+	fieldRe := regexp.MustCompile(`(?m)^` + regexp.QuoteMeta(field) + `\s*=\s*\[(.+)\]`)
+	fieldMatches := fieldRe.FindStringSubmatch(sectionContent)
+	if len(fieldMatches) > 1 {
+		arrayContent := strings.TrimSpace(fieldMatches[1])
+		if arrayContent == "" {
+			return []string{}
+		}
+
+		var result []string
+		items := strings.Split(arrayContent, ",")
+		for _, item := range items {
+			item = strings.TrimSpace(item)
+			item = strings.Trim(item, "\"'")
+			if item != "" {
+				result = append(result, item)
+			}
+		}
+		return result
+	}
+
+	return defaultValue
 }

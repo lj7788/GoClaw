@@ -64,7 +64,7 @@ const handleUnauthorized = () => {
   logout()
   if (store.status?.loginMode === 'wechat') {
     router.push('/login')
-  } else {
+  } else if (store.status?.loginMode === 'paired') {
     router.push('/paired')
   }
 }
@@ -82,7 +82,7 @@ onMounted(async () => {
 
     if (status.loginMode === 'wechat' && !store.isLogin && !whiteList.includes(currentPath)) {
       router.push('/login')
-    } else if (!store.isLogin && !whiteList.includes(currentPath)) {
+    } else if (status.loginMode === 'paired' && !store.isLogin && !whiteList.includes(currentPath)) {
       router.push('/paired')
     }
   } catch (err) {

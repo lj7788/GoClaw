@@ -2,9 +2,15 @@ package security
 
 import (
 	"fmt"
+	"math/rand"
 	"regexp"
 	"sync"
+	"time"
 )
+
+func init() {
+	rand.Seed(time.Now().UnixNano())
+}
 
 type SecurityPolicy struct {
 	mu                sync.RWMutex
@@ -313,10 +319,6 @@ func (g *PairingGuard) IsAllowedUser(userID string) bool {
 }
 
 func generatePairingCode() string {
-	const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
-	code := make([]byte, 6)
-	for i := range code {
-		code[i] = chars[i%len(chars)]
-	}
-	return string(code)
+	code := rand.Intn(900000) + 100000
+	return fmt.Sprintf("%06d", code)
 }

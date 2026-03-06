@@ -38,6 +38,14 @@ type Server struct {
 	memoryBackend  interface{}
 	authService    *auth.AuthService
 	userManager    *auth.UserManager
+	pairingGuard   PairingGuard
+}
+
+// PairingGuard 配对码守卫接口
+type PairingGuard interface {
+	PairingCode() string
+	VerifyCode(code string) bool
+	IsEnabled() bool
 }
 
 type wsClient struct {
@@ -93,6 +101,10 @@ func (s *Server) SetUserManager(userManager *auth.UserManager) {
 	s.userManager = userManager
 }
 
+func (s *Server) SetPairingGuard(guard PairingGuard) {
+	s.pairingGuard = guard
+}
+
 func (s *Server) SetConfig(key string, value interface{}) {
 	if s.config == nil {
 		s.config = make(map[string]interface{})
@@ -133,6 +145,9 @@ func (s *Server) Start(ctx context.Context) error {
 	// WebSocket route for agent chat
 	mux.HandleFunc("/api/ws/chat", s.handleWebSocket)
 	mux.HandleFunc("/api/ws", s.handleWebSocket)
+	
+	// Pairing route
+	mux.HandleFunc("/api/pair", s.handlePair)
 	
 	// Generic /api/* handler (handles all other /api/* paths)
 	mux.HandleFunc("/api/", s.handleAPI)
@@ -277,6 +292,57 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 	json.NewEncoder(w).Encode(response)
+}
+
+func (s *Server) handlePair(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(map[string]string{"error": "method not allowed"})
+		return
+	}
+	
+	// 检查是否启用了配对
+	if s.pairingGuard == nil || !s.pairingGuard.IsEnabled() {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "pairing not enabled"})
+		return
+	}
+	
+	// 支持两种方式获取配对码：header 或 JSON body
+	code := r.Header.Get("X-Pairing-Code")
+	if code == "" {
+		var req struct {
+			Code string `json:"code"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "invalid request"})
+			return
+		}
+		code = req.Code
+	}
+	
+	if code == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "pairing code required"})
+		return
+	}
+	
+	if s.pairingGuard.VerifyCode(code) {
+		// 生成一个简单的 token
+		token := fmt.Sprintf("paired_%d", time.Now().Unix())
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": true,
+			"message": "pairing successful",
+			"token":   token,
+		})
+		return
+	}
+	
+	w.WriteHeader(http.StatusUnauthorized)
+	json.NewEncoder(w).Encode(map[string]string{"error": "invalid pairing code"})
 }
 
 type ChatCompletionRequest struct {
@@ -699,22 +765,38 @@ func (s *Server) handleAPI(w http.ResponseWriter, r *http.Request) {
 			temperature = t
 		}
 		
-		wechatEnabled := false
-		if we, ok := s.config["wechat_enabled"].(bool); ok {
+				wechatEnabled := false
+	if we, ok := s.config["wechat_enabled"].(bool); ok {
 			wechatEnabled = we
-		}
+	}
 		
-		response := map[string]interface{}{
-			"provider":       provider,
-			"model":          model,
-			"temperature":    temperature,
-			"uptime_seconds": 0,
-			"gateway_port":   4096,
-			"locale":         "zh-CN",
-			"memory_backend": memoryBackend,
-			"paired":         false,
-			"channels":       map[string]bool{},
-			"wechatlogin":  wechatEnabled,
+	paired := false
+	pairingCode := ""
+		// 检查是否启用了 require_pairing
+	if rp, ok := s.config["require_pairing"].(bool); ok && rp {
+			paired = true
+	}
+		// 检查是否配置了 paired_tokens
+	if pt, ok := s.config["paired_tokens"].([]string); ok && len(pt) > 0 {
+		paired = true
+	}
+	// 获取配对码
+	if s.pairingGuard != nil && s.pairingGuard.IsEnabled() {
+		pairingCode = s.pairingGuard.PairingCode()
+	}
+	
+	response := map[string]interface{}{
+		"provider":       provider,
+		"model":          model,
+		"temperature":    temperature,
+		"uptime_seconds": 0,
+		"gateway_port":   4096,
+		"locale":         "zh-CN",
+		"memory_backend": memoryBackend,
+		"paired":         paired,
+		"pairing_code":   pairingCode,
+		"channels":       map[string]bool{},
+		"wechatlogin":  wechatEnabled,
 			"health": map[string]interface{}{
 				"pid":           os.Getpid(),
 				"updated_at":    time.Now().Format(time.RFC3339),
