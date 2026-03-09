@@ -2,13 +2,13 @@
   <header class="h-14 bg-gray-800 border-b border-gray-700 flex items-center justify-between px-6">
     <h1 class="text-lg font-semibold text-white">{{ t(pageTitleKey) }}</h1>
 
-    <div class="flex items-center gap-4">
+    <div class="flex items-center gap-4" >
       <button type="button" @click="toggleLanguage"
         class="px-3 py-1 rounded-md text-sm font-medium border border-gray-600 text-gray-300 hover:bg-gray-700 hover:text-white transition-colors">
         {{ localeDisplay }}
       </button>
-
-      <template v-if="isAuthenticated">
+      <template v-if="loginMode !== 'none'">
+      <template v-if="isAuthenticated ">
         <div class="flex items-center gap-3">
           <div class="flex items-center gap-2">
             <img v-if="user?.avatar" :src="user.avatar" :alt="isAdmin ? user.username : user.nickname"
@@ -39,6 +39,7 @@
           class="px-3 py-1.5 rounded-md text-sm text-gray-300 hover:bg-gray-700 hover:text-white transition-colors">
           管理员登录
         </router-link>
+      </template>
       </template>
     </div>
   </header>
@@ -109,6 +110,9 @@ const routeTitleKeys: Record<string, string> = {
 
 const pageTitleKey = computed(() => {
   return routeTitleKeys[route.path] ?? 'nav.dashboard'
+})
+const loginMode=computed(()=>{
+  return store.status?.loginMode
 })
 
 const isChat=computed(()=>{
