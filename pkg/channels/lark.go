@@ -496,6 +496,7 @@ func (c *LarkChannel) handleBinaryMessage(data []byte, msgChan chan<- types.Chan
 		Sender:      senderID,
 		Content:     content.Text,
 		ReplyTarget: msgPayload.Message.ChatID,
+		MessageID:   messageID,
 	}
 	log.Printf("Lark: message sent to channel")
 

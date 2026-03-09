@@ -211,6 +211,7 @@ type ChannelMessage struct {
 	Channel     string `json:"channel"`
 	Timestamp   uint64 `json:"timestamp"`
 	ThreadTS    string `json:"thread_ts,omitempty"`
+	MessageID   string `json:"message_id,omitempty"`
 }
 
 // SendMessage represents a message to send through a channel

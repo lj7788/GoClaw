@@ -879,7 +879,12 @@ func processChannelMessages(ctx context.Context, agt *agent.Agent, msgChan <-cha
 				if larkCh, ok := ch.(*channels.LarkChannel); ok {
 					log.Printf("  创建流式卡片...")
 					streamingSession = channels.NewLarkStreamingSession(larkCh.AppID(), larkCh.AppSecret(), "")
-					if err := streamingSession.Start(ctx, msg.ReplyTarget, "chat_id", msg.Content); err != nil {
+					// 使用 message_id 进行回复
+					messageID := msg.MessageID
+					if messageID == "" {
+						messageID = msg.ReplyTarget
+					}
+					if err := streamingSession.Start(ctx, messageID, "chat_id", msg.Content); err != nil {
 						log.Printf("  创建流式卡片失败: %v", err)
 						streamingSession = nil
 					} else {
