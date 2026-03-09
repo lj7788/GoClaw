@@ -925,14 +925,15 @@ func processChannelMessages(ctx context.Context, agt *agent.Agent, msgChan <-cha
 				if err := streamingSession.Close(ctx, responseText); err != nil {
 					log.Printf("  关闭流式卡片失败: %v", err)
 				}
-			}
-
-			replyMsg := types.NewSendMessage(responseText, msg.ReplyTarget)
-			log.Printf("  发送回复到 %s...", msg.ReplyTarget)
-			if err := ch.Send(ctx, replyMsg); err != nil {
-				log.Printf("发送回复失败: %v", err)
 			} else {
-				log.Printf("  回复发送成功!")
+				// 如果没有流式卡片，直接发送消息
+				replyMsg := types.NewSendMessage(responseText, msg.ReplyTarget)
+				log.Printf("  发送回复到 %s...", msg.ReplyTarget)
+				if err := ch.Send(ctx, replyMsg); err != nil {
+					log.Printf("发送回复失败: %v", err)
+				} else {
+					log.Printf("  回复发送成功!")
+				}
 			}
 			log.Printf("=== 处理通道消息结束 ===")
 		}

@@ -479,12 +479,36 @@ func truncateSummary(text string, maxLen ...int) string {
 	if text == "" {
 		return ""
 	}
-	clean := strings.ReplaceAll(text, "\n", " ")
+	
+	// Remove <think>...</think> tags (reasoning/thinking blocks from models like MiniMax)
+	clean := removeThinkTags(text)
+	
+	clean = strings.ReplaceAll(clean, "\n", " ")
 	clean = strings.TrimSpace(clean)
 	if len(clean) <= length {
 		return clean
 	}
 	return clean[:length-3] + "..."
+}
+
+func removeThinkTags(text string) string {
+	result := ""
+	rest := text
+	for {
+		start := strings.Index(rest, "<think>")
+		if start == -1 {
+			result += rest
+			break
+		}
+		result += rest[:start]
+		rest = rest[start+len("<think>"):]
+		end := strings.Index(rest, "</think>")
+		if end == -1 {
+			break
+		}
+		rest = rest[end+len("</think>"):]
+	}
+	return strings.TrimSpace(result)
 }
 
 func truncateQuestion(question string, maxLen ...int) string {

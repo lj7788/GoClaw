@@ -82,13 +82,35 @@ type OpenAIUsageInfo struct {
 }
 
 func (m OpenAIResponseMessage) effectiveContent() string {
+	content := ""
 	if m.Content != nil && *m.Content != "" {
-		return *m.Content
+		content = *m.Content
+	} else if m.ReasoningContent != nil {
+		content = *m.ReasoningContent
 	}
-	if m.ReasoningContent != nil {
-		return *m.ReasoningContent
+	
+	// Remove <think>...</think> tags (reasoning/thinking blocks from models like MiniMax)
+	return removeThinkTags(content)
+}
+
+func removeThinkTags(text string) string {
+	result := ""
+	rest := text
+	for {
+		start := strings.Index(rest, "<think>")
+		if start == -1 {
+			result += rest
+			break
+		}
+		result += rest[:start]
+		rest = rest[start+len("<think>"):]
+		end := strings.Index(rest, "</think>")
+		if end == -1 {
+			break
+		}
+		rest = rest[end+len("</think>"):]
 	}
-	return ""
+	return strings.TrimSpace(result)
 }
 
 func NewOpenAIProvider(apiKey string) *OpenAIProvider {
