@@ -1,4 +1,6 @@
 # GoClaw
+![logo-image](https://github.com/user-attachments/assets/c81a3f9e-c565-4dfb-96f4-39e4c40c07a6)
+
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Go Version](https://img.shields.io/badge/Go-1.21+-00ADD8E?style=flat&logo=go)](https://golang.org/)
