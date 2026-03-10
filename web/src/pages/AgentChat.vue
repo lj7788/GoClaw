@@ -198,7 +198,7 @@ const createNewSession = async () => {
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ title: '新对话' }),
+      body: JSON.stringify({ title: '' }), // 空标题会使用默认标题，然后会被更新
     })
     if (!response.ok) {
       throw new Error('Failed to create session')
@@ -232,9 +232,17 @@ const loadLatestSession = async () => {
     const data = await response.json()
     const sessions: Session[] = data.sessions || []
     
-    if (sessions.length > 0 && sessions[0]) {
-      await loadSessionMessages(sessions[0].id)
+    // 获取今天的日期字符串 (YYYY-MM-DD)
+    const today = new Date().toISOString().split('T')[0]
+    
+    // 筛选今天的会话（按 updated_at 判断）
+    const todaySessions = sessions.filter((s) => (s.updated_at as string).startsWith(today))
+    
+    if (todaySessions.length > 0) {
+      // 加载今天最新的会话
+      await loadSessionMessages(todaySessions[0].id as string)
     } else {
+      // 今天没有会话，新建一个
       await createNewSession()
     }
   } catch (err) {
@@ -312,6 +320,9 @@ const connectWebSocket = () => {
 
         pendingContentRef.value = ''
         typing.value = false
+        
+        // Refresh session list to show updated message count
+        sessionListRef.value?.loadSessions()
         break
       }
 
@@ -325,6 +336,8 @@ const connectWebSocket = () => {
             timestamp: new Date()
           }
         ]
+        // Refresh session list to show updated message count
+        sessionListRef.value?.loadSessions()
         break
 
       case 'tool_result': {
@@ -361,6 +374,8 @@ const connectWebSocket = () => {
             }
           ]
         }
+        // Refresh session list to show updated message count
+        sessionListRef.value?.loadSessions()
         break
       }
 
@@ -376,6 +391,8 @@ const connectWebSocket = () => {
         ]
         typing.value = false
         pendingContentRef.value = ''
+        // Refresh session list to show updated message count
+        sessionListRef.value?.loadSessions()
         break
     }
   }

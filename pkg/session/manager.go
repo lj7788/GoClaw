@@ -279,6 +279,37 @@ func (m *Manager) AddMessage(ctx context.Context, sessionID string, role string,
 		return fmt.Errorf("failed to update session message count: %w", err)
 	}
 
+	// 如果是第一条消息，且标题还是默认值，则根据第一条用户消息自动生成标题
+	var messageCount int
+	err = tx.QueryRowContext(ctx, "SELECT message_count FROM sessions WHERE id = ?", sessionID).Scan(&messageCount)
+	if err != nil {
+		return fmt.Errorf("failed to check message count: %w", err)
+	}
+
+	if messageCount == 1 {
+		// 检查当前标题是否还是默认值
+		var currentTitle string
+		err = tx.QueryRowContext(ctx, "SELECT title FROM sessions WHERE id = ?", sessionID).Scan(&currentTitle)
+		if err != nil {
+			return fmt.Errorf("failed to check session title: %w", err)
+		}
+
+		if currentTitle == "新对话" || currentTitle == "新会话" {
+			// 提取第一条用户消息的前20个字符作为标题
+			var firstMessage string
+			err = tx.QueryRowContext(ctx, "SELECT content FROM messages WHERE session_id = ? AND role = 'user' ORDER BY created_at ASC LIMIT 1", sessionID).Scan(&firstMessage)
+			if err == nil && firstMessage != "" {
+				if len(firstMessage) > 20 {
+					firstMessage = firstMessage[:20] + "..."
+				}
+				_, err = tx.ExecContext(ctx, "UPDATE sessions SET title = ? WHERE id = ?", firstMessage, sessionID)
+				if err != nil {
+					return fmt.Errorf("failed to update session title: %w", err)
+				}
+			}
+		}
+	}
+
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}

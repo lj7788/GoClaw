@@ -73,12 +73,22 @@
         </div>
       </div>
     </div>
+
+    <ConfirmDialog
+      v-model="showConfirm"
+      :title="confirmTitle"
+      :message="confirmMessage"
+      confirm-text="删除"
+      type="danger"
+      @confirm="confirmDelete"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { Plus, Search, MessageSquare, Trash2 } from 'lucide-vue-next'
+import ConfirmDialog from './ConfirmDialog.vue'
 
 interface Session {
   id: string
@@ -102,6 +112,10 @@ const emit = defineEmits<{
 const sessions = ref<Session[]>([])
 const loading = ref(false)
 const searchQuery = ref('')
+const showConfirm = ref(false)
+const confirmTitle = ref('确认删除')
+const confirmMessage = ref('')
+const deletingSession = ref<Session | null>(null)
 
 const filteredSessions = computed(() => {
   if (!searchQuery.value) {
@@ -155,25 +169,32 @@ const handleNewSession = () => {
   emit('new-session')
 }
 
-const handleDeleteSession = async (session: Session) => {
-  if (!confirm(`确定要删除会话 "${session.title}" 吗？`)) {
-    return
-  }
+const handleDeleteSession = (session: Session) => {
+  deletingSession.value = session
+  confirmTitle.value = '确认删除'
+  confirmMessage.value = `确定要删除会话"${session.title}"吗？此操作不可恢复。`
+  showConfirm.value = true
+}
 
+const confirmDelete = async () => {
+  if (!deletingSession.value) return
+  
   try {
-    const response = await fetch(`/api/sessions/${session.id}`, {
+    const response = await fetch(`/api/sessions/${deletingSession.value.id}`, {
       method: 'DELETE',
     })
     if (!response.ok) {
       throw new Error('Failed to delete session')
     }
-    sessions.value = sessions.value.filter((s) => s.id !== session.id)
-    if (props.currentSessionId === session.id) {
+    sessions.value = sessions.value.filter((s) => s.id !== deletingSession.value?.id)
+    if (props.currentSessionId === deletingSession.value.id) {
       emit('new-session')
     }
   } catch (error) {
     console.error('Failed to delete session:', error)
     alert('删除会话失败')
+  } finally {
+    deletingSession.value = null
   }
 }
 
