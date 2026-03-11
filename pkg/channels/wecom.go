@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"strings"
 	"sync"
@@ -309,11 +310,42 @@ func (c *WecomChannel) connectWebSocket(ctx context.Context, msgChan chan<- type
 	})
 	
 	c.wsClient.SetDisconnectedHandler(func(reason string) {
-		log.Printf("WeCom: WebSocket disconnected: %s", reason)
+		log.Printf("WeCom: WebSocket disconnected: %s, will auto reconnect...", reason)
 		c.wsMutex.Lock()
 		c.wsClient.connected = false
 		c.wsClient.authenticated = false
 		c.wsMutex.Unlock()
+
+		go func() {
+			maxAttempts := 100
+			baseDelay := 1 * time.Second
+			maxDelay := 30 * time.Second
+
+			for attempt := 1; attempt <= maxAttempts; attempt++ {
+				select {
+				case <-c.wsClient.ctx.Done():
+					log.Printf("WeCom: Reconnect cancelled, context done")
+					return
+				default:
+				}
+
+				delay := time.Duration(min(float64(baseDelay)*math.Pow(2, float64(attempt-1)), float64(maxDelay)))
+				log.Printf("WeCom: Reconnect attempt %d/%d after %v", attempt, maxAttempts, delay)
+
+				time.Sleep(delay)
+
+				err := c.wsClient.Connect()
+				if err != nil {
+					log.Printf("WeCom: Reconnect attempt %d failed: %v", attempt, err)
+					continue
+				}
+
+				log.Printf("WeCom: Reconnect successful!")
+				return
+			}
+
+			log.Printf("WeCom: Reconnect failed after %d attempts", maxAttempts)
+		}()
 	})
 	
 	c.wsClient.SetErrorHandler(func(err error) {
