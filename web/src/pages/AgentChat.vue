@@ -1,17 +1,41 @@
 <template>
-  <div class="flex h-[calc(100vh-3.5rem)]">
+  <div class="flex h-[calc(100vh-3.5rem)] relative">
     <div v-if="error"
       class="absolute top-0 left-0 right-0 px-4 py-2 bg-red-900/30 border-b border-red-700 flex items-center gap-2 text-sm text-red-300 z-10">
       <AlertCircle class="h-4 w-4 flex-shrink-0" />
       {{ error }}
     </div>
 
-    <SessionList
-      ref="sessionListRef"
-      :current-session-id="currentSessionId"
-      @session-select="handleSessionSelect"
-      @new-session="handleNewSession"
-    />
+    <div
+      :class="[
+        'flex-shrink-0 transition-all duration-300 overflow-hidden',
+        sidebarCollapsed ? 'w-0' : 'w-80'
+      ]"
+    >
+      <div :class="[sidebarCollapsed ? 'w-0' : 'w-80','h-full']">
+        <SessionList
+          ref="sessionListRef"
+          :current-session-id="currentSessionId"
+          @session-select="handleSessionSelect"
+          @new-session="handleNewSession"
+        />
+      </div>
+          
+    </div>
+<button
+      @click="sidebarCollapsed = !sidebarCollapsed"
+      :class="sidebarCollapsed?'rounded-r-lg':'rounded-l-lg'"
+      class="absolute left-0 top-1/2 transform -translate-y-1/2 z-10 p-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700  transition-all"
+      :style="{ left: sidebarCollapsed ? '0' : '290px' ,top:'calc(50% - 16px)'}"
+    >
+      <ChevronLeft
+        :class="[
+          'h-4 w-4 text-gray-400 transition-transform duration-300',
+          sidebarCollapsed ? 'rotate-180' : ''
+        ]"
+      />
+    </button>
+
 
     <div class="flex-1 flex flex-col">
       <div class="flex-1 overflow-y-auto p-4 space-y-4">
@@ -96,7 +120,7 @@
 
 <script setup lang="ts">
 import { ref, onUnmounted, onMounted, nextTick, watch } from 'vue'
-import { Send, Bot, User, AlertCircle } from 'lucide-vue-next'
+import { Send, Bot, User, AlertCircle, ChevronLeft } from 'lucide-vue-next'
 import type { WsMessage } from '../types/api'
 import { WebSocketClient } from '../lib/ws'
 import { useAuth } from '../hooks/useAuth'
@@ -116,7 +140,7 @@ interface Session {
   user_id?: string
   created_at: string
   updated_at: string
-  message_count: number
+  message_count?: number
   metadata?: Record<string, unknown>
 }
 
@@ -149,6 +173,7 @@ const typing = ref(false)
 const connected = ref(false)
 const error = ref<string | null>(null)
 const currentSessionId = ref<string>('')
+const sidebarCollapsed = ref(false)
 const sessionListRef = ref<{ loadSessions: () => void } | null>(null)
 
 const wsRef = ref<WebSocketClient | null>(null)
@@ -236,11 +261,14 @@ const loadLatestSession = async () => {
     const today = new Date().toISOString().split('T')[0]
     
     // 筛选今天的会话（按 updated_at 判断）
-    const todaySessions = sessions.filter((s) => (s.updated_at as string).startsWith(today))
+    const todaySessions = sessions.filter((s) => {
+      const updatedAt = s.updated_at
+      return updatedAt ? updatedAt.startsWith(today) : false
+    })
     
     if (todaySessions.length > 0) {
       // 加载今天最新的会话
-      await loadSessionMessages(todaySessions[0].id as string)
+      await loadSessionMessages(todaySessions[0].id)
     } else {
       // 今天没有会话，新建一个
       await createNewSession()

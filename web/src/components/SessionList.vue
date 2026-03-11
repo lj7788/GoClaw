@@ -1,7 +1,7 @@
 <template>
-  <div class="flex flex-col h-full bg-gray-900 border-r border-gray-800">
+  <div class="flex flex-col h-full bg-gray-900 border-r session-list border-gray-800">
     <div class="p-4 border-b border-gray-800">
-      <div class="flex items-center justify-between mb-3">
+      <div class="flex items-center justify-between mb-3" >
         <h2 class="text-lg font-semibold text-white">会话历史</h2>
         <button
           @click="handleNewSession"
@@ -34,42 +34,59 @@
       </div>
 
       <div v-else>
-        <div
-          v-for="session in filteredSessions"
-          :key="session.id"
-          @click="handleSessionClick(session)"
-          :class="[
-            'flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors group',
-            currentSessionId === session.id
-              ? 'bg-blue-600/20 border border-blue-600/50'
-              : 'hover:bg-gray-800 border border-transparent'
-          ]"
-        >
-          <MessageSquare
-            :class="[
-              'h-5 w-5 flex-shrink-0',
-              currentSessionId === session.id ? 'text-blue-500' : 'text-gray-500'
-            ]"
-          />
-          <div class="flex-1 min-w-0">
-            <h3
+        <div v-for="group in groupedSessions" :key="group.label" class="mb-2">
+          <div
+            @click="toggleGroup(group.label)"
+            class="flex items-center gap-2 px-2 py-1.5 text-xs font-medium text-gray-400 hover:text-gray-200 cursor-pointer select-none"
+          >
+            <ChevronDown
               :class="[
-                'text-sm font-medium truncate',
-                currentSessionId === session.id ? 'text-blue-400' : 'text-gray-200'
+                'h-4 w-4 transition-transform',
+                expandedGroups[group.label] ? '' : '-rotate-90'
+              ]"
+            />
+            <span>{{ group.label }}</span>
+            <span class="text-gray-600">({{ group.sessions.length }})</span>
+          </div>
+          <div v-show="expandedGroups[group.label]" class="space-y-1">
+            <div
+              v-for="session in group.sessions"
+              :key="session.id"
+              @click="handleSessionClick(session)"
+              :class="[
+                'flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors group',
+                currentSessionId === session.id
+                  ? 'bg-blue-600/20 border border-blue-600/50'
+                  : 'hover:bg-gray-800 border border-transparent'
               ]"
             >
-              {{ session.title }}
-            </h3>
-            <p class="text-xs text-gray-500 mt-0.5">
-              {{ formatDate(session.updated_at) }} · {{ session.message_count }} 条消息
-            </p>
+              <MessageSquare
+                :class="[
+                  'h-5 w-5 flex-shrink-0',
+                  currentSessionId === session.id ? 'text-blue-500' : 'text-gray-500'
+                ]"
+              />
+              <div class="flex-1 min-w-0">
+                <h3
+                  :class="[
+                    'text-sm font-medium truncate',
+                    currentSessionId === session.id ? 'text-blue-400' : 'text-gray-200'
+                  ]"
+                >
+                  {{ session.title }}
+                </h3>
+                <p class="text-xs text-gray-500 mt-0.5">
+                  {{ formatTime(session.updated_at) }} · {{ session.message_count }} 条消息
+                </p>
+              </div>
+              <button
+                @click.stop="handleDeleteSession(session)"
+                class="opacity-0 group-hover:opacity-100 p-1.5 text-gray-500 hover:text-red-400 hover:bg-red-900/20 rounded transition-all"
+              >
+                <Trash2 class="h-4 w-4" />
+              </button>
+            </div>
           </div>
-          <button
-            @click.stop="handleDeleteSession(session)"
-            class="opacity-0 group-hover:opacity-100 p-1.5 text-gray-500 hover:text-red-400 hover:bg-red-900/20 rounded transition-all"
-          >
-            <Trash2 class="h-4 w-4" />
-          </button>
         </div>
       </div>
     </div>
@@ -87,7 +104,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { Plus, Search, MessageSquare, Trash2 } from 'lucide-vue-next'
+import { Plus, Search, MessageSquare, Trash2, ChevronDown } from 'lucide-vue-next'
 import ConfirmDialog from './ConfirmDialog.vue'
 
 interface Session {
@@ -98,6 +115,11 @@ interface Session {
   updated_at: string
   message_count: number
   metadata?: Record<string, unknown>
+}
+
+interface SessionGroup {
+  label: string
+  sessions: Session[]
 }
 
 const props = defineProps<{
@@ -116,6 +138,51 @@ const showConfirm = ref(false)
 const confirmTitle = ref('确认删除')
 const confirmMessage = ref('')
 const deletingSession = ref<Session | null>(null)
+const expandedGroups = ref<Record<string, boolean>>({})
+
+const getDateGroup = (dateString: string): string => {
+  const date = new Date(dateString)
+  const now = new Date()
+  const diff = now.getTime() - date.getTime()
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24))
+
+  if (days === 0) {
+    return '今天'
+  } else if (days === 1) {
+    return '昨天'
+  } else if (days < 7) {
+    return '7 天内'
+  } else if (days < 30) {
+    return '30 天内'
+  } else {
+    return '更早'
+  }
+}
+
+const groupedSessions = computed<SessionGroup[]>(() => {
+  const filtered = filteredSessions.value
+  const groups: Record<string, Session[]> = {}
+
+  for (const session of filtered) {
+    const groupLabel = getDateGroup(session.updated_at)
+    if (!groups[groupLabel]) {
+      groups[groupLabel] = []
+    }
+    groups[groupLabel].push(session)
+  }
+
+  const order = ['今天', '昨天', '7 天内', '30 天内', '更早']
+  return order
+    .filter((label) => groups[label])
+    .map((label) => ({
+      label,
+      sessions: groups[label] || [],
+    }))
+})
+
+const toggleGroup = (label: string) => {
+  expandedGroups.value[label] = !expandedGroups.value[label]
+}
 
 const filteredSessions = computed(() => {
   if (!searchQuery.value) {
@@ -128,21 +195,12 @@ const filteredSessions = computed(() => {
   )
 })
 
-const formatDate = (dateString: string): string => {
-  const date = new Date(dateString)
-  const now = new Date()
-  const diff = now.getTime() - date.getTime()
-  const days = Math.floor(diff / (1000 * 60 * 60 * 24))
+const handleSearch = () => {
+}
 
-  if (days === 0) {
-    return '今天'
-  } else if (days === 1) {
-    return '昨天'
-  } else if (days < 7) {
-    return `${days} 天前`
-  } else {
-    return date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
-  }
+const formatTime = (dateString: string): string => {
+  const date = new Date(dateString)
+  return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
 }
 
 const loadSessions = async () => {
@@ -154,6 +212,13 @@ const loadSessions = async () => {
     }
     const data = await response.json()
     sessions.value = data.sessions || []
+    
+    const groups = groupedSessions.value
+    const newExpanded: Record<string, boolean> = {}
+    for (const group of groups) {
+      newExpanded[group.label] = true
+    }
+    expandedGroups.value = newExpanded
   } catch (error) {
     console.error('Failed to load sessions:', error)
   } finally {
@@ -198,14 +263,7 @@ const confirmDelete = async () => {
   }
 }
 
-const handleSearch = () => {
-}
-
 onMounted(() => {
   loadSessions()
-})
-
-defineExpose({
-  loadSessions
 })
 </script>
