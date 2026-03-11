@@ -261,9 +261,10 @@ const loadLatestSession = async () => {
     const today = new Date().toISOString().split('T')[0]
     
     // 筛选今天的会话（按 updated_at 判断）
-    const todaySessions = sessions.filter((s) => {
-      const updatedAt = String(s.updated_at || '')
-      return updatedAt.startsWith(today)
+    const todaySessions = sessions.filter((s): boolean => {
+      const updatedAt = s.updated_at
+      if (!updatedAt) return false
+      return updatedAt.startsWith(today as string)
     })
     
     if (todaySessions.length > 0) {
