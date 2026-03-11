@@ -262,13 +262,17 @@ const loadLatestSession = async () => {
     
     // 筛选今天的会话（按 updated_at 判断）
     const todaySessions = sessions.filter((s) => {
-      const updatedAt = s.updated_at
-      return updatedAt ? updatedAt.startsWith(today) : false
+      const updatedAt = (s.updated_at || '') as string
+      return updatedAt.startsWith(today)
     })
     
     if (todaySessions.length > 0) {
-      // 加载今天最新的会话
-      await loadSessionMessages(todaySessions[0].id)
+      const firstSessionId = todaySessions[0].id
+      if (firstSessionId) {
+        await loadSessionMessages(firstSessionId)
+      } else {
+        await createNewSession()
+      }
     } else {
       // 今天没有会话，新建一个
       await createNewSession()
