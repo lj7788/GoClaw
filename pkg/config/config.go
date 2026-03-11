@@ -67,6 +67,12 @@ type DingTalkConfig struct {
 	AllowedUsers []string
 }
 
+type WecomConfig struct {
+	BotID      string
+	BotSecret  string
+	DefaultTo  string
+}
+
 func Default() *Config {
 	homeDir, _ := os.UserHomeDir()
 	defaultSkillsDir := "."
@@ -281,9 +287,7 @@ func (c *Config) GetDingTalkConfig() *DingTalkConfig {
 	dt.ClientID = cfg["client_id"]
 	dt.ClientSecret = cfg["client_secret"]
 
-	// Parse allowed_users
 	if users, ok := cfg["allowed_users"]; ok {
-		// Remove brackets and parse comma-separated values
 		users = strings.Trim(users, "[]")
 		for _, u := range strings.Split(users, ",") {
 			u = strings.TrimSpace(strings.Trim(u, "\"'"))
@@ -294,6 +298,19 @@ func (c *Config) GetDingTalkConfig() *DingTalkConfig {
 	}
 
 	return dt
+}
+
+func (c *Config) GetWecomConfig() *WecomConfig {
+	cfg, ok := c.Channels["wecom"]
+	if !ok {
+		return nil
+	}
+
+	return &WecomConfig{
+		BotID:     cfg["bot_id"],
+		BotSecret: cfg["bot_secret"],
+		DefaultTo: cfg["default_to"],
+	}
 }
 
 // HasChannels returns true if any channel is configured

@@ -34,6 +34,44 @@ import (
 //go:embed web/dist
 var embeddedWebFS embed.FS
 
+var (
+	globalChannelRegistry = &ChannelRegistry{}
+)
+
+type ChannelRegistry struct {
+	mu       sync.RWMutex
+	channels map[string]channels.Channel
+}
+
+func (r *ChannelRegistry) Register(name string, ch channels.Channel) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.channels == nil {
+		r.channels = make(map[string]channels.Channel)
+	}
+	r.channels[name] = ch
+}
+
+func (r *ChannelRegistry) Get(name string) channels.Channel {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if r.channels == nil {
+		return nil
+	}
+	return r.channels[name]
+}
+
+func GetWecomChannel() *channels.WecomChannel {
+	ch := globalChannelRegistry.Get("wecom")
+	if ch == nil {
+		return nil
+	}
+	if wecomCh, ok := ch.(*channels.WecomChannel); ok {
+		return wecomCh
+	}
+	return nil
+}
+
 // memoryImpl implements the agent.Memory interface
 type memoryImpl struct {
 	backend memory.MemoryBackend
@@ -304,6 +342,21 @@ var agentCmd = &cobra.Command{
 		tools.NewMemoryForgetTool(memoryBackend),
 	}
 
+		// Add WeCom send tool if wecom channel is configured
+		if wecomCfg := cfg.GetWecomConfig(); wecomCfg != nil && wecomCfg.BotID != "" {
+			log.Printf("配置企业微信发送工具: BotID=%s, DefaultTo=%s", wecomCfg.BotID, wecomCfg.DefaultTo)
+			sendFunc := func(ctx context.Context, chatID, content string) error {
+				wecomCh := GetWecomChannel()
+				log.Printf("sendFunc: GetWecomChannel() returned: %v", wecomCh != nil)
+				if wecomCh != nil {
+					log.Printf("sendFunc: WecomChannel found, IsConnected=%v", wecomCh.IsConnected())
+					return wecomCh.SendMessageToChat(ctx, chatID, content)
+				}
+				return fmt.Errorf("企业微信通道未连接")
+			}
+			agentTools = append(agentTools, tools.NewWecomSendTool(sendFunc, wecomCfg.DefaultTo))
+		}
+
 		// Add IPC tools if enabled
 		if ipcDb := tools.GetIpcDb(); ipcDb != nil {
 			agentTools = append(agentTools, tools.CreateIpcTools(ipcDb, nil)...)
@@ -455,6 +508,17 @@ var agentCmd = &cobra.Command{
 			tools.NewMemoryStoreTool(memoryBackend),
 			tools.NewMemoryRecallTool(memoryBackend),
 			tools.NewMemoryForgetTool(memoryBackend),
+		}
+
+		// Add WeCom send tool if wecom channel is configured
+		if wecomCfg := cfg.GetWecomConfig(); wecomCfg != nil && wecomCfg.BotID != "" {
+			sendFunc := func(ctx context.Context, chatID, content string) error {
+				if wecomCh := GetWecomChannel(); wecomCh != nil {
+					return wecomCh.SendMessageToChat(ctx, chatID, content)
+				}
+				return fmt.Errorf("企业微信通道未连接")
+			}
+			agentTools = append(agentTools, tools.NewWecomSendTool(sendFunc, wecomCfg.DefaultTo))
 		}
 
 		if ipcDb := tools.GetIpcDb(); ipcDb != nil {
@@ -656,6 +720,17 @@ var daemonCmd = &cobra.Command{
 			tools.NewMemoryForgetTool(memoryBackend),
 		}
 
+		// Add WeCom send tool if wecom channel is configured
+		if wecomCfg := cfg.GetWecomConfig(); wecomCfg != nil && wecomCfg.BotID != "" {
+			sendFunc := func(ctx context.Context, chatID, content string) error {
+				if wecomCh := GetWecomChannel(); wecomCh != nil {
+					return wecomCh.SendMessageToChat(ctx, chatID, content)
+				}
+				return fmt.Errorf("企业微信通道未连接")
+			}
+			agentTools = append(agentTools, tools.NewWecomSendTool(sendFunc, wecomCfg.DefaultTo))
+		}
+
 		if ipcDb := tools.GetIpcDb(); ipcDb != nil {
 			agentTools = append(agentTools, tools.CreateIpcTools(ipcDb, nil)...)
 		}
@@ -809,6 +884,7 @@ var daemonCmd = &cobra.Command{
 			}
 			
 			channelMap[channelName] = ch
+			globalChannelRegistry.Register(channelName, ch)
 			log.Printf("通道 %s 创建成功", channelName)
 			
 			channelWG.Add(1)

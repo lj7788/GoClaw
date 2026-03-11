@@ -448,39 +448,43 @@ func truncateString(s string, maxLen int) string {
 }
 
 func (p *OpenAIProvider) convertMessage(msg types.ChatMessage) OpenAIMessage {
-	if msg.Role == "assistant" {
-		log.Printf("Converting assistant message, content: %s", msg.Content)
-		var toolCallsData map[string]interface{}
-		if err := json.Unmarshal([]byte(msg.Content), &toolCallsData); err == nil {
-			log.Printf("Parsed toolCallsData: %+v", toolCallsData)
-			if tc, ok := toolCallsData["tool_calls"]; ok {
-				log.Printf("Found tool_calls: %+v", tc)
-				if tcArr, ok := tc.([]interface{}); ok {
-					toolCalls := make([]OpenAIToolCall, 0, len(tcArr))
-					for _, tcItem := range tcArr {
-						if tcMap, ok := tcItem.(map[string]interface{}); ok {
-							id, _ := tcMap["id"].(string)
-							log.Printf("Tool call ID from map: '%s'", id)
-							var name, args string
-							if funcObj, ok := tcMap["function"].(map[string]interface{}); ok {
-								name, _ = funcObj["name"].(string)
-								args, _ = funcObj["arguments"].(string)
-							} else {
-								name, _ = tcMap["name"].(string)
-								args, _ = tcMap["arguments"].(string)
+			if msg.Role == "assistant" {
+			log.Printf("Converting assistant message, content: %s", msg.Content)
+			var toolCallsData map[string]interface{}
+			if err := json.Unmarshal([]byte(msg.Content), &toolCallsData); err == nil {
+				log.Printf("Parsed toolCallsData: %+v", toolCallsData)
+				if tc, ok := toolCallsData["tool_calls"]; ok {
+					log.Printf("Found tool_calls: %+v", tc)
+					if tcArr, ok := tc.([]interface{}); ok {
+						toolCalls := make([]OpenAIToolCall, 0, len(tcArr))
+						for _, tcItem := range tcArr {
+							if tcMap, ok := tcItem.(map[string]interface{}); ok {
+								id, _ := tcMap["id"].(string)
+								log.Printf("Tool call ID from map: '%s'", id)
+								var name, args string
+								if funcObj, ok := tcMap["function"].(map[string]interface{}); ok {
+									name, _ = funcObj["name"].(string)
+									args, _ = funcObj["arguments"].(string)
+								} else {
+									name, _ = tcMap["name"].(string)
+									args, _ = tcMap["arguments"].(string)
+								}
+								log.Printf("Creating tool call with ID: '%s', Name: '%s'", id, name)
+								// 确保ID不为空
+								if id == "" {
+									log.Printf("WARNING: Empty tool call ID found, generating a new one")
+									id = fmt.Sprintf("call_%d", time.Now().UnixNano())
+								}
+								toolCalls = append(toolCalls, OpenAIToolCall{
+									ID:   &id,
+									Type: strPtr("function"),
+									Function: OpenAIFunctionCall{
+										Name:      name,
+										Arguments: args,
+									},
+								})
 							}
-							log.Printf("Creating tool call with ID: '%s', Name: '%s'", id, name)
-							toolCalls = append(toolCalls, OpenAIToolCall{
-								ID:   &id,
-								Type: strPtr("function"),
-								Function: OpenAIFunctionCall{
-									Name:      name,
-									Arguments: args,
-								},
-							})
 						}
-					}
-
 					var content *string
 					if c, ok := toolCallsData["content"].(string); ok {
 						content = &c

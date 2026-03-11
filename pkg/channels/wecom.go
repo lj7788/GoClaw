@@ -1194,6 +1194,47 @@ func (c *WecomChannel) processIncomingMessage(ctx context.Context, msg *WecomMes
 	return nil
 }
 
+func (c *WecomChannel) SendMessageToChat(ctx context.Context, chatID, content string) error {
+	c.wsMutex.RLock()
+	wsClient := c.wsClient
+	var authenticated bool
+	if wsClient != nil {
+		authenticated = wsClient.authenticated
+	}
+	c.wsMutex.RUnlock()
+	
+	if wsClient == nil || !authenticated {
+		return fmt.Errorf("WebSocket not connected or not authenticated")
+	}
+	
+	reqID := generateReqID("aibot_send_msg")
+	
+	body := map[string]interface{}{
+		"chatid":   chatID,
+		"msgtype":  "markdown",
+		"markdown": map[string]string{
+			"content": content,
+		},
+	}
+	
+	frame := &WecomWSFrame{
+		Cmd: "aibot_send_msg",
+		Headers: map[string]interface{}{
+			"req_id": reqID,
+		},
+		Body: body,
+	}
+	
+	log.Printf("WeCom: Sending message to chat %s", chatID)
+	return wsClient.SendFrame(frame)
+}
+
+func (c *WecomChannel) IsConnected() bool {
+	c.wsMutex.RLock()
+	defer c.wsMutex.RUnlock()
+	return c.wsClient != nil && c.wsClient.connected && c.wsClient.authenticated
+}
+
 func (c *WecomChannel) startHeartbeat(ctx context.Context) {
 	ticker := time.NewTicker(weComHeartbeatInterval)
 	defer ticker.Stop()

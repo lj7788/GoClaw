@@ -1088,6 +1088,72 @@ func (s *Server) handleAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	
+	// Handle /api/chat path
+	if path == "chat" && r.Method == http.MethodPost {
+		// Read request body
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		// Parse request
+		var req struct {
+			Message    string `json:"message"`
+			SessionID  string `json:"session_id"`
+		}
+
+		if err := json.Unmarshal(body, &req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		if req.Message == "" {
+			http.Error(w, "message is required", http.StatusBadRequest)
+			return
+		}
+
+		sessionID := req.SessionID
+		if sessionID == "" {
+			sessionID = fmt.Sprintf("session_%d", time.Now().UnixNano())
+		}
+
+		// Process message through agent
+		ctx, cancel := context.WithTimeout(context.Background(), 300*time.Second)
+		defer cancel()
+
+		// Save user message to session if session manager is available
+		if s.sessionManager != nil {
+			if err := s.sessionManager.AddMessage(ctx, sessionID, "user", req.Message, nil); err != nil {
+				log.Printf("Failed to save user message: %v", err)
+			}
+		}
+
+		response, err := s.agent.ProcessMessage(ctx, req.Message)
+		if err != nil {
+			log.Printf("Agent error: %v", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		// Save assistant response to session if session manager is available
+		if s.sessionManager != nil {
+			responseContent := response.TextOrEmpty()
+			if err := s.sessionManager.AddMessage(ctx, sessionID, "assistant", responseContent, nil); err != nil {
+				log.Printf("Failed to save assistant message: %v", err)
+			}
+		}
+
+		// Return response
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status": "ok",
+			"session_id": sessionID,
+			"content": response.TextOrEmpty(),
+		})
+		return
+	}
+
 	// Default response for unknown paths
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }

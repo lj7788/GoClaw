@@ -40,15 +40,16 @@ func NewCronAddTool(workspaceDir string) *CronAddTool {
 		"properties": {
 			"name": { "type": "string", "description": "任务名称，用于标识这个定时任务" },
 			"expression": { "type": "string", "description": "Cron 表达式（例如：'0 16 * * 1-5' 表示工作日每天16:00）或 'at:YYYY-MM-DDTHH:MM' 格式用于一次性任务" },
-			"command": { "type": "string", "description": "要执行的 Shell 命令或脚本" },
+			"command": { "type": "string", "description": "要执行的 Shell 命令或脚本（与 agent_task 二选一）" },
+			"agent_task": { "type": "string", "description": "要让 Agent 执行的任务描述（与 command 二选一）。例如：'分析股票爱尔眼科并发送到企业微信'" },
 			"enabled": { "type": "boolean", "description": "是否启用任务（默认：true）" }
 		},
-		"required": ["expression", "command"]
+		"required": ["expression"]
 	}`)
 	return &CronAddTool{
 		BaseTool: *NewBaseTool(
 			"cron_add",
-			"创建定时任务。用于设置定期执行的任务，例如每天、每周或特定时间执行脚本。支持标准 cron 表达式格式：分 时 日 月 周。例如：'0 16 * * 1-5' 表示工作日每天下午16:00执行，'0 18 * * 5' 表示每周五下午18:00执行。也可以使用 'at:YYYY-MM-DDTHH:MM' 格式创建一次性任务。",
+			"创建定时任务。用于设置定期执行的任务。支持两种模式：1) 执行 Shell 命令（使用 command 参数）；2) 让 Agent 执行任务（使用 agent_task 参数）。支持标准 cron 表达式格式：分 时 日 月 周。例如：'0 16 * * 1-5' 表示工作日每天下午16:00执行，'*/10 * * * *' 表示每10分钟执行一次。",
 			schema,
 		),
 		workspaceDir: workspaceDir,
@@ -59,6 +60,7 @@ func NewCronAddTool(workspaceDir string) *CronAddTool {
 func (t *CronAddTool) Execute(ctx context.Context, args map[string]interface{}) (*ToolResult, error) {
 	expression, _ := args["expression"].(string)
 	command, _ := args["command"].(string)
+	agentTask, _ := args["agent_task"].(string)
 	name, _ := args["name"].(string)
 	enabled := true
 	if e, ok := args["enabled"].(bool); ok {
@@ -72,12 +74,26 @@ func (t *CronAddTool) Execute(ctx context.Context, args map[string]interface{}) 
 			Error:   "expression parameter is required",
 		}, nil
 	}
-	if command == "" {
+	
+	if command == "" && agentTask == "" {
 		return &ToolResult{
 			Success: false,
 			Output:  "",
-			Error:   "command parameter is required",
+			Error:   "必须提供 command 或 agent_task 参数",
 		}, nil
+	}
+
+	var actualCommand string
+	var taskType string
+	if agentTask != "" {
+		taskType = "Agent任务"
+		actualCommand = fmt.Sprintf(`curl -s -X POST http://localhost:4096/api/chat -H "Content-Type: application/json" -d '{"message": "%s", "session_id": "cron_task"}'`, escapeJSONString(agentTask))
+		if name == "" {
+			name = agentTask
+		}
+	} else {
+		taskType = "Shell命令"
+		actualCommand = command
 	}
 
 	scheduler := cron.GetScheduler(t.workspaceDir)
@@ -94,7 +110,7 @@ func (t *CronAddTool) Execute(ctx context.Context, args map[string]interface{}) 
 	job := &cron.Job{
 		Name:       name,
 		Expression: expression,
-		Command:    command,
+		Command:    actualCommand,
 		Enabled:    enabled,
 		OneShot:    strings.HasPrefix(expression, "at:"),
 	}
@@ -107,17 +123,31 @@ func (t *CronAddTool) Execute(ctx context.Context, args map[string]interface{}) 
 		}, nil
 	}
 
+	taskDesc := command
+	if agentTask != "" {
+		taskDesc = fmt.Sprintf("[Agent任务] %s", agentTask)
+	}
+
 	return &ToolResult{
 		Success: true,
-		Output: fmt.Sprintf(`Created job:
+		Output: fmt.Sprintf(`已创建定时任务:
   ID: %s
-  Name: %s
-  Expression: %s
-  Command: %s
-  Next Run: %s
-  Enabled: %v`,
-			job.ID, job.Name, job.Expression, job.Command, job.NextRun.Format(time.RFC3339), job.Enabled),
+  名称: %s
+  类型: %s
+  Cron表达式: %s
+  任务内容: %s
+  下次执行: %s
+  状态: %v`,
+			job.ID, job.Name, taskType, job.Expression, taskDesc, job.NextRun.Format("2006-01-02 15:04:05"), map[bool]string{true: "已启用", false: "已禁用"}[job.Enabled]),
 	}, nil
+}
+
+func escapeJSONString(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, `"`, `\"`)
+	s = strings.ReplaceAll(s, "\n", "\\n")
+	s = strings.ReplaceAll(s, "\t", "\\t")
+	return s
 }
 
 func (t *CronAddTool) parseNextRun(expr string) time.Time {

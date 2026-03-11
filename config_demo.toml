@@ -16,14 +16,19 @@
 #default_model = "mistralai/mistral-7b-instruct:free"  # 404 不可用
 #default_model = "meta-llama/llama-3.1-8b-instruct:free"
 #default_model = "nvidia/llama-3.1-nemotron-70b-instruct:free"
-#api_key = "your-openrouter-api-key"
+#api_key = "open_router_key"
 
-# Gitee AI 配置（当前使用）
-default_provider = "custom:https://ai.gitee.com/v1"
-default_model = "GLM-4.7-Flash"
+# Gitee AI 配置（已禁用）
+#default_provider = "custom:https://ai.gitee.com/v1"
+#default_model = "GLM-4.7-Flash"
 #default_model = "DeepSeek-R1-Distill-Qwen-14B"
 #default_model = "Qwen2.5-72B-Instruct"
-api_key = "your-gitee-api-key"
+#api_key = "gitee_ai_key"
+
+# MinMax 配置（当前使用）
+default_provider = "custom:https://api.minimaxi.com/v1"
+default_model = "MiniMax-M2.5"
+api_key = "your-minimax-api-key"
 
 # 阿里云百炼配置（Coding Plan Lite 支持）
 #default_provider = "bailian"
@@ -194,7 +199,7 @@ strict_host_validation = false
 provider_retries = 1
 provider_backoff_ms = 200
 fallback_providers = []
-api_keys = ["your-gitee-api-key"]
+api_keys = ["your-minimax-api-key"]
 channel_initial_backoff_secs = 1
 channel_max_backoff_secs = 10
 scheduler_poll_secs = 2
@@ -250,9 +255,23 @@ message_timeout_secs = 60
 # allowed_senders = []
 
 [channels_config.dingtalk]
+enable = false
 client_id = "your-dingtalk-client-id"
 client_secret = "your-dingtalk-client-secret"
 allowed_users = ["*"]
+
+[channels_config.lark]
+enable = false
+app_id = "your-lark-app-id"
+app_secret = "your-lark-app-secret"
+allowed_users = ["*"]
+
+[channels_config.wecom]
+enable = true
+bot_id = "your-wecom-bot-id"
+bot_secret = "your-wecom-bot-secret"
+allowed_users = ["*"]
+default_to = "your-default-recipient" 
 
 [memory]
 backend = "sqlite"
@@ -421,3 +440,10 @@ enabled = false
 api_url = "https://api.groq.com/openai/v1/audio/transcriptions"
 model = "whisper-large-v3-turbo"
 max_duration_secs = 120
+
+[wechat]
+enabled = false
+app_id = "your-wechat-app-id"
+app_secret = "your-wechat-app-secret"
+redirect_uri = "https://your-domain.com/api/auth/wechat/callback"
+scope = "snsapi_login"

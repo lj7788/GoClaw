@@ -61,9 +61,10 @@ type ToolCall struct {
 
 // ConversationMessage represents a message in a multi-turn conversation
 type ConversationMessage struct {
-	Type        string              `json:"type"` // "chat", "tool_results"
+	Type        string              `json:"type"` // "chat", "tool_results", "assistant_tool_call"
 	Chat        *ChatMessage        `json:"chat,omitempty"`
 	ToolResults []ToolResultMessage `json:"tool_results,omitempty"`
+	ToolCalls   []ToolCall          `json:"tool_calls,omitempty"` // For assistant messages with tool calls
 }
 
 const MessageTypeChat = "chat"

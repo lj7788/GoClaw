@@ -292,6 +292,32 @@ func (a *Agent) ProcessMessage(ctx context.Context, message string) (*types.Chat
 		histMsg := a.history[i]
 		if histMsg.Type == "chat" && histMsg.Chat != nil {
 			messages = append(messages, *histMsg.Chat)
+		} else if histMsg.Type == "assistant_tool_call" {
+			// Handle assistant message with tool calls
+			responseText := ""
+			if histMsg.Chat != nil {
+				responseText = histMsg.Chat.Content
+			}
+			toolCallsData := make([]map[string]interface{}, 0, len(histMsg.ToolCalls))
+			for _, tc := range histMsg.ToolCalls {
+				toolCallsData = append(toolCallsData, map[string]interface{}{
+					"id":   tc.ID,
+					"type": "function",
+					"function": map[string]interface{}{
+						"name":      tc.Name,
+						"arguments": string(tc.Arguments),
+					},
+				})
+			}
+			combinedContent := map[string]interface{}{
+				"content":    responseText,
+				"tool_calls": toolCallsData,
+			}
+			combinedJSON, _ := json.Marshal(combinedContent)
+			messages = append(messages, types.ChatMessage{
+				Role:    types.RoleAssistant,
+				Content: string(combinedJSON),
+			})
 		} else if histMsg.Type == "tool_results" && len(histMsg.ToolResults) > 0 {
 			// Convert tool results to tool messages
 			for _, toolResult := range histMsg.ToolResults {
@@ -366,6 +392,21 @@ func (a *Agent) ProcessMessage(ctx context.Context, message string) (*types.Chat
 				}
 			}
 			previousToolCalls = currentToolCalls
+			
+			// Save assistant message with tool calls to history FIRST
+			if len(response.ToolCalls) > 0 {
+				log.Printf("Saving assistant message with %d tool calls to history", len(response.ToolCalls))
+				toolCallsCopy := make([]types.ToolCall, len(response.ToolCalls))
+				copy(toolCallsCopy, response.ToolCalls)
+				a.history = append(a.history, types.ConversationMessage{
+					Type:      "assistant_tool_call",
+					ToolCalls: toolCallsCopy,
+					Chat: &types.ChatMessage{
+						Role:    types.RoleAssistant,
+						Content: response.TextOrEmpty(),
+					},
+				})
+			}
 			
 			// Execute tools
 			toolResults, err := a.toolDispatcher.ExecuteTools(ctx, response.ToolCalls, a.tools)

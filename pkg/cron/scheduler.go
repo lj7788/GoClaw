@@ -260,6 +260,7 @@ func (s *Scheduler) scheduleJob(job *Job) error {
 		job.Metadata = make(map[string]interface{})
 	}
 	
+	// Always regenerate entry_id - old ones are invalid after restart
 	if job.OneShot {
 		entryID, err := s.cron.AddFunc(expression, func() {
 			s.executeJob(job.ID)
@@ -278,14 +279,17 @@ func (s *Scheduler) scheduleJob(job *Job) error {
 		}
 		job.Metadata["entry_id"] = int64(entryID)
 	}
-
+	
+	// Update next run time
+	job.NextRun = s.calculateNextRun(job.Expression, job.OneShot)
+	
 	return nil
 }
 
 // scheduleAllJobs schedules all enabled jobs
 func (s *Scheduler) scheduleAllJobs() {
-	s.store.mu.RLock()
-	defer s.store.mu.RUnlock()
+	s.store.mu.Lock()
+	defer s.store.mu.Unlock()
 
 	for _, job := range s.store.jobs {
 		if job.Enabled {
@@ -294,6 +298,9 @@ func (s *Scheduler) scheduleAllJobs() {
 			}
 		}
 	}
+	
+	// Save the updated jobs
+	s.store.save()
 }
 
 // executeJob executes a job
