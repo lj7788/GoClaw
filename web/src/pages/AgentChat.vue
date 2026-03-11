@@ -262,14 +262,14 @@ const loadLatestSession = async () => {
     
     // 筛选今天的会话（按 updated_at 判断）
     const todaySessions = sessions.filter((s) => {
-      const updatedAt = (s.updated_at || '') as string
+      const updatedAt = String(s.updated_at || '')
       return updatedAt.startsWith(today)
     })
     
     if (todaySessions.length > 0) {
-      const firstSessionId = todaySessions[0].id
-      if (firstSessionId) {
-        await loadSessionMessages(firstSessionId)
+      const firstSession = todaySessions[0]
+      if (firstSession && firstSession.id) {
+        await loadSessionMessages(firstSession.id)
       } else {
         await createNewSession()
       }
