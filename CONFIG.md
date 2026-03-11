@@ -260,6 +260,7 @@ allowed_users = ["*"]
 | `bot_id` | string | - | 企业微信机器人 ID |
 | `bot_secret` | string | - | 企业微信机器人 Secret |
 | `allowed_users` | array | [] | 允许的用户列表（["*"] 表示所有用户） |
+| `default_to` | string | - | 默认消息接收人（当没有指定接收人时使用） |
 
 **示例：**
 ```toml
@@ -268,6 +269,7 @@ enable = true
 bot_id = "aibjVtI1HRyG-LDINkpFYDvXuIccnTzp7Ig"
 bot_secret = "WFhq0icnlrRfav1XaGEOIKOjvqtyU3MLs37CLwjCp5q"
 allowed_users = ["*"]
+default_to = "your-default-recipient"
 ```
 
 **功能特性：**

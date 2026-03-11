@@ -243,7 +243,7 @@ func (s *Server) Start(ctx context.Context) error {
 		Addr:         s.addr,
 		Handler:      handler,
 		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 30 * time.Second,
+		WriteTimeout: 300 * time.Second,
 	}
 
 	go func() {
