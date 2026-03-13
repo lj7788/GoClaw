@@ -17,6 +17,7 @@ type CronJob struct {
 	Name        string                 `json:"name"`
 	Expression  string                 `json:"expression"`
 	Command     string                 `json:"command"`
+	Type        string                 `json:"type"`
 	NextRun     time.Time              `json:"next_run"`
 	LastRun     *time.Time             `json:"last_run,omitempty"`
 	LastStatus  string                 `json:"last_status,omitempty"`

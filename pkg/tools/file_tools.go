@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // FileReadTool reads a file from disk.
@@ -75,7 +76,8 @@ func NewFileWriteTool() *FileWriteTool {
 		"properties": {
 			"path": { "type": "string", "description": "Path to the file to write" },
 			"content": { "type": "string", "description": "Content to write to the file" },
-			"append": { "type": "boolean", "description": "Whether to append to the file instead of overwriting" }
+			"append": { "type": "boolean", "description": "Whether to append to the file instead of overwriting" },
+			"json_array": { "type": "boolean", "description": "When true, treats content as JSON object and appends to existing JSON array in file" }
 		},
 		"required": ["path", "content"]
 	}`)
@@ -109,9 +111,15 @@ func (t *FileWriteTool) Execute(ctx context.Context, args map[string]interface{}
 	}
 
 	append, _ := args["append"].(bool)
+	jsonArray, _ := args["json_array"].(bool)
 
 	// Expand path
 	path = filepath.Clean(path)
+
+	// Handle json_array mode
+	if jsonArray {
+		return t.writeJSONArray(path, content)
+	}
 
 	// Create directory if it doesn't exist
 	dir := filepath.Dir(path)
@@ -151,6 +159,70 @@ func (t *FileWriteTool) Execute(ctx context.Context, args map[string]interface{}
 	return &ToolResult{
 		Success: true,
 		Output:  fmt.Sprintf("Successfully wrote to file: %s", path),
+	}, nil
+}
+
+func (t *FileWriteTool) writeJSONArray(path, newItem string) (*ToolResult, error) {
+	var data []map[string]interface{}
+
+	if _, err := os.Stat(path); err == nil {
+		data = []map[string]interface{}{}
+		if content, err := ioutil.ReadFile(path); err == nil && len(content) > 0 {
+			trimmed := strings.TrimSpace(string(content))
+			if trimmed != "" && trimmed != "[]" {
+				if err := json.Unmarshal(content, &data); err != nil {
+					data = []map[string]interface{}{}
+				}
+			}
+		}
+	} else if !os.IsNotExist(err) {
+		return &ToolResult{
+			Success: false,
+			Output:  fmt.Sprintf("Failed to read file: %v", err),
+			Error:   err.Error(),
+		}, nil
+	}
+
+	var newItemData map[string]interface{}
+	if err := json.Unmarshal([]byte(newItem), &newItemData); err != nil {
+		return &ToolResult{
+			Success: false,
+			Output:  fmt.Sprintf("Invalid JSON content: %v", err),
+			Error:   err.Error(),
+		}, nil
+	}
+
+	data = append(data, newItemData)
+
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return &ToolResult{
+			Success: false,
+			Output:  fmt.Sprintf("Failed to create directory: %v", err),
+			Error:   err.Error(),
+		}, nil
+	}
+
+	output, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		return &ToolResult{
+			Success: false,
+			Output:  fmt.Sprintf("Failed to marshal JSON: %v", err),
+			Error:   err.Error(),
+		}, nil
+	}
+
+	if err := ioutil.WriteFile(path, output, 0644); err != nil {
+		return &ToolResult{
+			Success: false,
+			Output:  fmt.Sprintf("Failed to write file: %v", err),
+			Error:   err.Error(),
+		}, nil
+	}
+
+	return &ToolResult{
+		Success: true,
+		Output:  fmt.Sprintf("Successfully appended JSON object to array in file: %s (total %d items)", path, len(data)),
 	}, nil
 }
 

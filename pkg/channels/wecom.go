@@ -1257,7 +1257,7 @@ func (c *WecomChannel) SendMessageToChat(ctx context.Context, chatID, content st
 		Body: body,
 	}
 	
-	log.Printf("WeCom: Sending message to chat %s", chatID)
+	log.Printf("WeCom: Sending message to chat %s (content length: %d)", chatID, len(content))
 	return wsClient.SendFrame(frame)
 }
 

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strings"
 )
 
 type WecomSendFunc func(ctx context.Context, chatID, content string) error
@@ -75,20 +76,46 @@ func (t *WecomSendTool) Execute(ctx context.Context, args map[string]interface{}
 		}, nil
 	}
 
-	log.Printf("[WecomSendTool] Calling sendFunc with chatID=%s", chatID)
-	err := t.sendFunc(ctx, chatID, message)
-	if err != nil {
-		log.Printf("[WecomSendTool] sendFunc error: %v", err)
+	recipients := strings.Split(chatID, ",")
+	for i := range recipients {
+		recipients[i] = strings.TrimSpace(recipients[i])
+	}
+
+	var failed []string
+	var success []string
+
+	for _, recipient := range recipients {
+		if recipient == "" {
+			continue
+		}
+
+		log.Printf("[WecomSendTool] Sending to recipient: %s", recipient)
+		err := t.sendFunc(ctx, recipient, message)
+		if err != nil {
+			log.Printf("[WecomSendTool] sendFunc FAILED for %s: %v", recipient, err)
+			failed = append(failed, recipient)
+		} else {
+			log.Printf("[WecomSendTool] sendFunc SUCCESS for %s", recipient)
+			success = append(success, recipient)
+		}
+	}
+
+	if len(failed) > 0 && len(success) == 0 {
 		return &ToolResult{
 			Success: false,
 			Output:  "",
-			Error:   fmt.Sprintf("发送消息失败: %v。请确保使用 daemon 命令启动以连接企业微信。", err),
+			Error:   fmt.Sprintf("发送消息失败。失败接收者: %s", strings.Join(failed, ", ")),
 		}, nil
 	}
 
-	log.Printf("[WecomSendTool] Message sent successfully")
+	resultMsg := fmt.Sprintf("消息已成功发送到: %s", strings.Join(success, ", "))
+	if len(failed) > 0 {
+		resultMsg += fmt.Sprintf("\n失败接收者: %s", strings.Join(failed, ", "))
+	}
+
+	log.Printf("[WecomSendTool] Message sent: %s", resultMsg)
 	return &ToolResult{
 		Success: true,
-		Output:  fmt.Sprintf("消息已成功发送到企业微信会话: %s", chatID),
+		Output:  resultMsg,
 	}, nil
 }

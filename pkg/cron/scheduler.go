@@ -427,11 +427,19 @@ func (s *Scheduler) runAgentCommand(message string) (string, error) {
 	defer cancel()
 
 	apiURL := s.gatewayAddress + "/api/chat"
-	payload := fmt.Sprintf(`{"message": %s, "session_id": "cron_task"}`, message)
+	
+	payloadBytes, err := json.Marshal(map[string]string{
+		"message":    message,
+		"session_id": "cron_task",
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal payload: %w", err)
+	}
 
-	cmd := exec.CommandContext(ctx, "curl", "-s", "-X", "POST", apiURL,
+	cmd := exec.CommandContext(ctx, "curl", "-s", "-X", "POST",
+		apiURL,
 		"-H", "Content-Type: application/json",
-		"-d", payload)
+		"-d", string(payloadBytes))
 	
 	output, err := cmd.CombinedOutput()
 	return string(output), err
