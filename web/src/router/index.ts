@@ -10,6 +10,7 @@ import Config from '../pages/Config.vue'
 import Cost from '../pages/Cost.vue'
 import Logs from '../pages/Logs.vue'
 import Doctor from '../pages/Doctor.vue'
+import Channels from '../pages/Channels.vue'
 import WechatLogin from '../pages/WechatLogin.vue'
 import UserCenter from '../pages/UserCenter.vue'
 import AdminLogin from '../pages/AdminLogin.vue'
@@ -33,6 +34,7 @@ const routes = [
       { path: 'cost', component: Cost },
       { path: 'logs', component: Logs },
       { path: 'doctor', component: Doctor },
+      { path: 'channels', component: Channels },
       { path: 'user', component: UserCenter },
       { path: 'admin', component: Admin }
     ]

@@ -7,7 +7,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sync"
-	"syscall"
 	"time"
 )
 
@@ -58,9 +57,7 @@ func (r *Runtime) StartProcess(ctx context.Context, name, cmd string, args ...st
 	execCmd := exec.CommandContext(ctx, cmd, args...)
 	execCmd.Dir = r.workspaceDir
 	execCmd.Env = r.env
-	execCmd.SysProcAttr = &syscall.SysProcAttr{
-		Setpgid: true,
-	}
+	// Note: SysProcAttr platform-specific settings removed for Windows compatibility
 
 	if err := execCmd.Start(); err != nil {
 		return nil, fmt.Errorf("failed to start process: %w", err)
@@ -98,7 +95,7 @@ func (r *Runtime) StopProcess(name string) error {
 	}
 
 	if proc.Cmd.Process != nil {
-		proc.Cmd.Process.Signal(syscall.SIGTERM)
+		proc.Cmd.Process.Kill()
 	}
 
 	return nil

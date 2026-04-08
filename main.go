@@ -645,6 +645,12 @@ var agentCmd = &cobra.Command{
 			}
 		}
 
+		// 初始化通道管理器
+		log.Printf("初始化通道管理器...")
+		channelManager := gateway.NewChannelManager(cfg)
+		srv.SetChannelManager(channelManager)
+		log.Printf("通道管理器设置完成")
+
 		if err := srv.Start(ctx); err != nil {
 			return fmt.Errorf("启动网关失败: %w", err)
 		}
@@ -664,7 +670,7 @@ var agentCmd = &cobra.Command{
 			return fmt.Errorf("关闭网关失败: %w", err)
 		}
 
-		fmt.Println("网关已停止")	
+		fmt.Println("网关已停止")
 		return nil
 	},
 }
@@ -869,6 +875,12 @@ var daemonCmd = &cobra.Command{
 			}
 		}
 
+		// 初始化通道管理器
+		log.Printf("初始化通道管理器...")
+		channelManager := gateway.NewChannelManager(cfg)
+		srv.SetChannelManager(channelManager)
+		log.Printf("通道管理器设置完成")
+
 		if err := srv.Start(ctx); err != nil {
 			return fmt.Errorf("启动网关失败: %w", err)
 		}
@@ -876,12 +888,15 @@ var daemonCmd = &cobra.Command{
 		fmt.Printf("网关服务器已启动于 %s\n", addr)
 	fmt.Printf("提供程序: %s, 模型: %s\n", providerToUse, modelToUse)
 	fmt.Printf("HTTP API: http://localhost%s\n", addr)
-	fmt.Printf("WebSocket: ws://localhost%s/ws\n", addr)	
+	fmt.Printf("WebSocket: ws://localhost%s/ws\n", addr)
 
 		// Start channels from config
 		var channelWG sync.WaitGroup
+		// Create shared msgChan for all channels
 		msgChan := make(chan types.ChannelMessage, 100)
-		
+		// Share the msgChan with channelManager (for QR login sessions)
+		channelManager.SetMessageChannel(msgChan)
+
 		// Create channel map for replies
 		channelMap := make(map[string]channels.Channel)
 		
@@ -914,22 +929,33 @@ var daemonCmd = &cobra.Command{
 		
 		// Auto-start weixin channel if logged in (zero-config)
 		if _, hasWeixin := cfg.Channels["weixin"]; !hasWeixin {
-			weixinCh := channels.NewWeixinChannel(&channels.WeixinConfig{})
-			if weixinCh.IsConfigured() {
+			// First check if channelManager has a weixin channel from QR login
+			weixinCh := channelManager.GetWeixinChannel()
+			if weixinCh != nil && weixinCh.IsConfigured() {
 				channelMap["weixin"] = weixinCh
 				globalChannelRegistry.Register("weixin", weixinCh)
-				log.Printf("自动启动微信渠道 (已登录账号: %s)", weixinCh.GetAccountID())
-				
-				channelWG.Add(1)
-				go func() {
-					defer channelWG.Done()
-					log.Printf("启动通道: weixin")
-					if err := weixinCh.Listen(ctx, msgChan); err != nil {
-						log.Printf("通道 weixin 错误: %v", err)
-					}
-				}()
+				log.Printf("使用 QR 登录的微信渠道 (账号: %s)", weixinCh.GetAccountID())
 				startedChannels++
-				fmt.Printf("  通道: weixin (自动检测，账号: %s)\n", weixinCh.GetAccountID())
+				fmt.Printf("  通道: weixin (QR 登录，账号: %s)\n", weixinCh.GetAccountID())
+			} else {
+				// Try to auto-load from saved account
+				weixinCh := channels.NewWeixinChannel(&channels.WeixinConfig{})
+				if weixinCh.IsConfigured() {
+					channelMap["weixin"] = weixinCh
+					globalChannelRegistry.Register("weixin", weixinCh)
+					log.Printf("自动启动微信渠道 (已登录账号: %s)", weixinCh.GetAccountID())
+
+					channelWG.Add(1)
+					go func() {
+						defer channelWG.Done()
+						log.Printf("启动通道: weixin")
+						if err := weixinCh.Listen(ctx, msgChan); err != nil {
+							log.Printf("通道 weixin 错误: %v", err)
+						}
+					}()
+					startedChannels++
+					fmt.Printf("  通道: weixin (自动检测，账号: %s)\n", weixinCh.GetAccountID())
+				}
 			}
 		}
 		
@@ -945,7 +971,7 @@ var daemonCmd = &cobra.Command{
 			for chName := range channelMap {
 				log.Printf("  通道: %s", chName)
 			}
-			processChannelMessages(ctx, agt, msgChan, channelMap)
+			processChannelMessages(ctx, agt, msgChan, channelMap, channelManager)
 		}()
 
 		sigChan := make(chan os.Signal, 1)
@@ -1076,7 +1102,7 @@ func parseAllowedUsers(s string) []string {
 }
 
 // processChannelMessages processes incoming channel messages
-func processChannelMessages(ctx context.Context, agt *agent.Agent, msgChan <-chan types.ChannelMessage, channelMap map[string]channels.Channel) {
+func processChannelMessages(ctx context.Context, agt *agent.Agent, msgChan <-chan types.ChannelMessage, channelMap map[string]channels.Channel, channelManager *gateway.ChannelManager) {
 	log.Printf("processChannelMessages: 开始处理消息")
 	for {
 		select {
@@ -1128,12 +1154,22 @@ func processChannelMessages(ctx context.Context, agt *agent.Agent, msgChan <-cha
 			log.Printf("  响应预览: %s", truncateString(responseText, 100))
 
 			ch, ok := channelMap[msg.Channel]
-			if !ok {
-				log.Printf("未找到通道 %s", msg.Channel)
-				if streamingSession != nil {
-					streamingSession.Close(ctx, "")
+			if !ok || msg.Channel == "weixin" {
+				// For weixin, always get from channelManager (may change on QR login)
+				if msg.Channel == "weixin" {
+					if wxCh := channelManager.GetWeixinChannel(); wxCh != nil {
+						ch = wxCh
+						// Don't cache - it may change if user re-scans QR
+						log.Printf("从 channelManager 获取微信通道 (accountID: %s)", wxCh.GetAccountID())
+					}
 				}
-				continue
+				if ch == nil {
+					log.Printf("未找到通道 %s", msg.Channel)
+					if streamingSession != nil {
+						streamingSession.Close(ctx, "")
+					}
+					continue
+				}
 			}
 
 			// 更新流式卡片

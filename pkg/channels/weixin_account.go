@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -72,24 +73,27 @@ func (m *WeixinAccountManager) ListAccountIDs() []string {
 func (m *WeixinAccountManager) RegisterAccountID(accountID string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+	return m.registerAccountIDUnlocked(accountID)
+}
+
+func (m *WeixinAccountManager) registerAccountIDUnlocked(accountID string) error {
 	ids := m.listAccountIDsUnlocked()
 	for _, id := range ids {
 		if id == accountID {
 			return nil
 		}
 	}
-	
+
 	ids = append(ids, accountID)
 	data, err := json.MarshalIndent(ids, "", "  ")
 	if err != nil {
 		return err
 	}
-	
+
 	if err := os.MkdirAll(filepath.Dir(m.indexFile), 0755); err != nil {
 		return err
 	}
-	
+
 	return os.WriteFile(m.indexFile, data, 0644)
 }
 
@@ -157,8 +161,42 @@ func (m *WeixinAccountManager) SaveAccount(accountID string, account *WeixinAcco
 	if err := os.WriteFile(filePath, data, 0600); err != nil {
 		return err
 	}
-	
-	return m.RegisterAccountID(accountID)
+
+	return m.registerAccountIDUnlocked(accountID)
+}
+
+// DeleteAccount deletes an account file and removes it from the index
+func (m *WeixinAccountManager) DeleteAccount(accountID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// Delete the account file
+	filePath := m.accountFilePath(accountID)
+	if err := os.Remove(filePath); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+
+	// Remove from index
+	ids := m.listAccountIDsUnlocked()
+	newIDs := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if id != accountID {
+			newIDs = append(newIDs, id)
+		}
+	}
+
+	if len(newIDs) == 0 {
+		// No accounts left, delete the index file
+		os.Remove(m.indexFile)
+		return nil
+	}
+
+	data, err := json.MarshalIndent(newIDs, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(m.indexFile, data, 0644)
 }
 
 func (m *WeixinAccountManager) accountFilePath(accountID string) string {
@@ -211,6 +249,7 @@ func NewQRLoginManager(httpClient *WeixinChannel) *QRLoginManager {
 
 type QRStartResult struct {
 	QRCodeURL  string `json:"qrcodeUrl,omitempty"`
+	QRCode     string `json:"qrcode,omitempty"`     // The raw QR code string for polling status
 	Message    string `json:"message"`
 	SessionKey string `json:"sessionKey"`
 }
@@ -262,11 +301,19 @@ func (m *QRLoginManager) StartLogin(ctx context.Context, accountID, apiBaseURL s
 		QRCodeURL:  qrResp.QRCodeImgContent,
 		StartedAt:  time.Now().UnixMilli(),
 	}
-	
+
 	m.activeLogins[sessionKey] = login
-	
+
+	// Use QRCodeImgContent if available, otherwise construct URL from QRCode
+	qrcodeURL := qrResp.QRCodeImgContent
+	if qrcodeURL == "" && qrResp.QRCode != "" {
+		// Construct a URL that can be used to display the QR code
+		qrcodeURL = "https://api.qrserver.com/v1/create-qr-code/?size=256x256&data=" + qrResp.QRCode
+	}
+
 	return &QRStartResult{
-		QRCodeURL:  qrResp.QRCodeImgContent,
+		QRCodeURL:  qrcodeURL,
+		QRCode:     qrResp.QRCode,
 		Message:    "使用微信扫描以下二维码，以完成连接。",
 		SessionKey: sessionKey,
 	}, nil
@@ -308,7 +355,7 @@ func (m *QRLoginManager) WaitForLogin(ctx context.Context, sessionKey, apiBaseUR
 		default:
 		}
 		
-		statusResp, err := m.pollQRStatus(ctx, apiBaseURL, activeLogin.QRCode)
+		statusResp, err := m.PollQRStatus(ctx, apiBaseURL, activeLogin.QRCode)
 		if err != nil {
 			time.Sleep(2 * time.Second)
 			continue
@@ -397,30 +444,38 @@ func (m *QRLoginManager) fetchQRCode(ctx context.Context, apiBaseURL string) (*Q
 	if !strings.HasSuffix(base, "/") {
 		base += "/"
 	}
-	
+
 	url := base + "ilink/bot/get_bot_qrcode?bot_type=" + DefaultBotType
-	
+	log.Printf("[Weixin] Fetching QR code from: %s", url)
+
 	req, err := createRequest(ctx, "GET", url, nil)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
+		log.Printf("[Weixin] Failed to fetch QR code: %v", err)
 		return nil, err
 	}
 	defer resp.Body.Close()
-	
+
+	body, _ := io.ReadAll(resp.Body)
+	log.Printf("[Weixin] QR code response status: %d, body length: %d", resp.StatusCode, len(body))
+
 	var result QRCodeResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := json.Unmarshal(body, &result); err != nil {
+		log.Printf("[Weixin] Failed to decode QR code response: %v", err)
 		return nil, err
 	}
-	
+
+	log.Printf("[Weixin] QRCode length: %d, QRCodeImgContent length: %d", len(result.QRCode), len(result.QRCodeImgContent))
+
 	return &result, nil
 }
 
-func (m *QRLoginManager) pollQRStatus(ctx context.Context, apiBaseURL, qrCode string) (*QRStatusResponse, error) {
+func (m *QRLoginManager) PollQRStatus(ctx context.Context, apiBaseURL, qrCode string) (*QRStatusResponse, error) {
 	base := apiBaseURL
 	if !strings.HasSuffix(base, "/") {
 		base += "/"

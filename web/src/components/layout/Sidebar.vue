@@ -63,7 +63,8 @@ import {
   DollarSign,
   Activity,
   Stethoscope,
-  ChevronLeft
+  ChevronLeft,
+  Radio
 } from 'lucide-vue-next'
 
 defineProps<{
@@ -83,6 +84,7 @@ const navItems = [
   { to: '/tools', icon: Wrench, labelKey: 'nav.tools' },
   { to: '/cron', icon: Clock, labelKey: 'nav.cron' },
   { to: '/integrations', icon: Puzzle, labelKey: 'nav.integrations' },
+  { to: '/channels', icon: Radio, labelKey: 'nav.channels' },
   { to: '/memory', icon: Brain, labelKey: 'nav.memory' },
   { to: '/config', icon: Settings, labelKey: 'nav.config' },
   { to: '/cost', icon: DollarSign, labelKey: 'nav.cost' },

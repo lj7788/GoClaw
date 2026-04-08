@@ -43,6 +43,7 @@ type Server struct {
 	pairingGuard   PairingGuard
 	scheduler      *cron.Scheduler
 	sessionManager *session.Manager
+	channelManager *ChannelManager
 }
 
 // PairingGuard 配对码守卫接口
@@ -128,9 +129,19 @@ func (s *Server) SetSessionManager(manager *session.Manager) {
 	s.sessionManager = manager
 }
 
+func (s *Server) SetChannelManager(manager *ChannelManager) {
+	s.channelManager = manager
+}
+
 func (s *Server) Start(ctx context.Context) error {
 	mux := http.NewServeMux()
-	
+
+	// Wrap with logging
+	loggedMux := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("[HTTP] %s %s", r.Method, r.URL.Path)
+		mux.ServeHTTP(w, r)
+	})
+
 	// Handle API routes FIRST (before static files)
 	mux.HandleFunc("/api/health", s.handleHealth)
 	mux.HandleFunc("/api/v1/chat/completions", s.handleChatCompletions)
@@ -157,7 +168,16 @@ func (s *Server) Start(ctx context.Context) error {
 	// Session management routes
 	mux.HandleFunc("/api/sessions", s.handleSessions)
 	mux.HandleFunc("/api/sessions/", s.handleSessionDetail)
-	
+
+	// Channel management routes
+	mux.HandleFunc("/api/channels", s.handleChannels)
+	mux.HandleFunc("/api/channels/dingtalk/config", s.handleDingTalkConfig)
+	mux.HandleFunc("/api/channels/dingtalk/connect", s.handleDingTalkConnect)
+	mux.HandleFunc("/api/channels/dingtalk/disconnect", s.handleDingTalkDisconnect)
+	mux.HandleFunc("/api/channels/weixin/qrcode", s.handleWeixinQRCode)
+	mux.HandleFunc("/api/channels/weixin/status", s.handleWeixinStatus)
+	mux.HandleFunc("/api/channels/weixin/disconnect", s.handleWeixinDisconnect)
+
 	// WebSocket route for agent chat
 	mux.HandleFunc("/api/ws/chat", s.handleWebSocket)
 	mux.HandleFunc("/api/ws", s.handleWebSocket)
@@ -234,9 +254,9 @@ func (s *Server) Start(ctx context.Context) error {
 		log.Printf("Available at: http://localhost%s/", s.addr)
 	}
 
-	var handler http.Handler = mux
+	var handler http.Handler = loggedMux
 	if s.authMiddleware != nil {
-		handler = s.authMiddleware(mux)
+		handler = s.authMiddleware(loggedMux)
 	}
 
 	s.server = &http.Server{
@@ -2338,5 +2358,223 @@ func (s *Server) handleSessionMessages(w http.ResponseWriter, r *http.Request, s
 
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// handleChannels handles GET /api/channels - returns all channel status
+func (s *Server) handleChannels(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	if s.channelManager == nil {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"channels": map[string]interface{}{},
+		})
+		return
+	}
+
+	status := s.channelManager.GetStatus()
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"channels": status,
+	})
+}
+
+// handleDingTalkConfig handles POST /api/channels/dingtalk/config
+func (s *Server) handleDingTalkConfig(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if s.channelManager == nil {
+		http.Error(w, "Channel manager not initialized", http.StatusInternalServerError)
+		return
+	}
+
+	var req struct {
+		ClientID     string   `json:"client_id"`
+		ClientSecret string   `json:"client_secret"`
+		AllowedUsers []string `json:"allowed_users"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if req.ClientID == "" || req.ClientSecret == "" {
+		http.Error(w, "client_id and client_secret are required", http.StatusBadRequest)
+		return
+	}
+
+	if err := s.channelManager.ConfigureDingTalk(req.ClientID, req.ClientSecret, req.AllowedUsers); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":  "success",
+		"message": "钉钉配置保存成功",
+	})
+}
+
+// handleDingTalkConnect handles POST /api/channels/dingtalk/connect
+func (s *Server) handleDingTalkConnect(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if s.channelManager == nil {
+		http.Error(w, "Channel manager not initialized", http.StatusInternalServerError)
+		return
+	}
+
+	if err := s.channelManager.ConnectDingTalk(r.Context()); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":  "success",
+		"message": "钉钉连接成功",
+	})
+}
+
+// handleDingTalkDisconnect handles POST /api/channels/dingtalk/disconnect
+func (s *Server) handleDingTalkDisconnect(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if s.channelManager == nil {
+		http.Error(w, "Channel manager not initialized", http.StatusInternalServerError)
+		return
+	}
+
+	s.channelManager.DisconnectDingTalk()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":  "success",
+		"message": "钉钉已断开连接",
+	})
+}
+
+// handleWeixinQRCode handles GET /api/channels/weixin/qrcode
+func (s *Server) handleWeixinQRCode(w http.ResponseWriter, r *http.Request) {
+	log.Printf("[handleWeixinQRCode] Received request")
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if s.channelManager == nil {
+		log.Printf("[handleWeixinQRCode] Channel manager not initialized")
+		http.Error(w, "Channel manager not initialized", http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("[handleWeixinQRCode] Starting Weixin login...")
+	session, err := s.channelManager.StartWeixinLogin(r.Context())
+	if err != nil {
+		log.Printf("[handleWeixinQRCode] Error: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("[handleWeixinQRCode] Success, QRCodeURL length: %d, session_key: %s", len(session.QRCodeURL), session.SessionKey)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":      "success",
+		"qrcode_url":  session.QRCodeURL,
+		"session_key": session.SessionKey,
+	})
+}
+
+// handleWeixinStatus handles GET /api/channels/weixin/status
+func (s *Server) handleWeixinStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if s.channelManager == nil {
+		http.Error(w, "Channel manager not initialized", http.StatusInternalServerError)
+		return
+	}
+
+	sessionKey := r.URL.Query().Get("session_key")
+	if sessionKey != "" {
+		// Return specific login session status
+		log.Printf("[handleWeixinStatus] Looking up session_key: %s", sessionKey)
+		session := s.channelManager.GetWeixinLoginStatus(sessionKey)
+		if session == nil {
+			log.Printf("[handleWeixinStatus] Session not found for key: %s", sessionKey)
+			http.Error(w, "Session not found", http.StatusNotFound)
+			return
+		}
+		log.Printf("[handleWeixinStatus] Found session, status: %s, ptr: %p", session.Status, session)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":  session.Status,
+			"message": getStatusMessage(session.Status),
+		})
+		return
+	}
+
+	// Return overall WeChat status
+	status := s.channelManager.GetStatus()
+	wxStatus := status["weixin"]
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":     wxStatus.Connected,
+		"account_id": wxStatus.AccountID,
+		"message":    wxStatus.Message,
+	})
+}
+
+// handleWeixinDisconnect handles POST /api/channels/weixin/disconnect
+func (s *Server) handleWeixinDisconnect(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if s.channelManager == nil {
+		http.Error(w, "Channel manager not initialized", http.StatusInternalServerError)
+		return
+	}
+
+	s.channelManager.DisconnectWeixin()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":  "success",
+		"message": "微信已断开绑定",
+	})
+}
+
+// getStatusMessage returns a human-readable message for WeChat login status
+func getStatusMessage(status string) string {
+	switch status {
+	case "waiting":
+		return "等待扫码"
+	case "scanned":
+		return "已扫码，等待确认"
+	case "confirmed":
+		return "绑定成功"
+	case "expired":
+		return "二维码已过期"
+	default:
+		return status
 	}
 }

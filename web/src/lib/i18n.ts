@@ -20,6 +20,7 @@ const translations: Record<Locale, Record<string, string>> = {
     'nav.cost': 'Cost Tracker',
     'nav.logs': 'Logs',
     'nav.doctor': 'Doctor',
+    'nav.channels': 'Channels',
 
     // Dashboard
     'dashboard.title': 'Dashboard',
@@ -156,6 +157,27 @@ const translations: Record<Locale, Record<string, string>> = {
     'auth.pairing_failed': 'Pairing failed. Please try again.',
     'auth.enter_code': 'Enter your pairing code to connect to the agent.',
 
+    // Channels
+    'channels.title': 'Channel Management',
+    'channels.dingtalk': 'DingTalk',
+    'channels.weixin': 'WeChat',
+    'channels.status': 'Status',
+    'channels.connected': 'Connected',
+    'channels.disconnected': 'Disconnected',
+    'channels.not_configured': 'Not Configured',
+    'channels.client_id': 'Client ID',
+    'channels.client_secret': 'Client Secret',
+    'channels.connect': 'Connect',
+    'channels.disconnect': 'Disconnect',
+    'channels.configure': 'Configure',
+    'channels.save_config': 'Save Configuration',
+    'channels.generate_qrcode': 'Generate QR Code',
+    'channels.scan_qrcode': 'Scan QR code with WeChat to bind',
+    'channels.binding_success': 'Binding successful',
+    'channels.binding_failed': 'Binding failed',
+    'channels.qrcode_expired': 'QR code expired, please regenerate',
+    'channels.waiting_scan': 'Waiting for scan...',
+
     // Common
     'common.loading': 'Loading...',
     'common.error': 'An error occurred.',
@@ -203,6 +225,7 @@ const translations: Record<Locale, Record<string, string>> = {
     'nav.cost': 'Maliyet Takibi',
     'nav.logs': 'Kayitlar',
     'nav.doctor': 'Doktor',
+    'nav.channels': 'Kanallar',
 
     // Dashboard
     'dashboard.title': 'Kontrol Paneli',
@@ -339,6 +362,27 @@ const translations: Record<Locale, Record<string, string>> = {
     'auth.pairing_failed': 'Eslestirme basarisiz. Lutfen tekrar deneyin.',
     'auth.enter_code': 'Ajana baglanmak icin eslestirme kodunuzu girin.',
 
+    // Channels
+    'channels.title': 'Kanal Yonetimi',
+    'channels.dingtalk': 'DingTalk',
+    'channels.weixin': 'WeChat',
+    'channels.status': 'Durum',
+    'channels.connected': 'Bagli',
+    'channels.disconnected': 'Baglanti Kesildi',
+    'channels.not_configured': 'Yapilandirilmadi',
+    'channels.client_id': 'Musteri ID',
+    'channels.client_secret': 'Musteri Gizli Anahtari',
+    'channels.connect': 'Baglan',
+    'channels.disconnect': 'Baglantiyi Kes',
+    'channels.configure': 'Yapilandir',
+    'channels.save_config': 'Yapilandirmayi Kaydet',
+    'channels.generate_qrcode': 'QR Kod Olustur',
+    'channels.scan_qrcode': 'Baglamak icin WeChat ile QR kodu tarayin',
+    'channels.binding_success': 'Baglama basarili',
+    'channels.binding_failed': 'Baglama basarisiz',
+    'channels.qrcode_expired': 'QR kodun suresi doldu, lutfen tekrar olusturun',
+    'channels.waiting_scan': 'Tarama bekleniyor...',
+
     // Common
     'common.loading': 'Yukleniyor...',
     'common.error': 'Bir hata olustu.',
@@ -386,6 +430,7 @@ const translations: Record<Locale, Record<string, string>> = {
     'nav.cost': '成本追踪',
     'nav.logs': '日志',
     'nav.doctor': '诊断',
+    'nav.channels': '通道',
 
     // Dashboard
     'dashboard.title': '仪表盘',
@@ -521,6 +566,27 @@ const translations: Record<Locale, Record<string, string>> = {
     'auth.pairing_success': '配对成功！',
     'auth.pairing_failed': '配对失败，请重试。',
     'auth.enter_code': '输入配对码以连接到智能体。',
+
+    // Channels
+    'channels.title': '通道管理',
+    'channels.dingtalk': '钉钉',
+    'channels.weixin': '微信',
+    'channels.status': '状态',
+    'channels.connected': '已连接',
+    'channels.disconnected': '未连接',
+    'channels.not_configured': '未配置',
+    'channels.client_id': 'Client ID',
+    'channels.client_secret': 'Client Secret',
+    'channels.connect': '连接',
+    'channels.disconnect': '断开',
+    'channels.configure': '配置',
+    'channels.save_config': '保存配置',
+    'channels.generate_qrcode': '生成二维码',
+    'channels.scan_qrcode': '使用微信扫码绑定',
+    'channels.binding_success': '绑定成功',
+    'channels.binding_failed': '绑定失败',
+    'channels.qrcode_expired': '二维码已过期，请重新生成',
+    'channels.waiting_scan': '等待扫码...',
 
     // Common
     'common.loading': '加载中...',

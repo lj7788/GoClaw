@@ -427,6 +427,11 @@ func (c *WeixinChannel) Stop() {
 	}
 }
 
+// DeleteAccount deletes the saved account data
+func (c *WeixinChannel) DeleteAccount(accountID string) error {
+	return c.accountManager.DeleteAccount(accountID)
+}
+
 func (c *WeixinChannel) SetToken(token string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -439,6 +444,12 @@ func (c *WeixinChannel) IsConfigured() bool {
 
 func (c *WeixinChannel) GetAccountID() string {
 	return c.accountID
+}
+
+// SetBotToken sets the bot token and account ID after successful login
+func (c *WeixinChannel) SetBotToken(token, accountID string) {
+	c.botToken = token
+	c.accountID = accountID
 }
 
 func extractTextBody(items []*MessageItem) string {
@@ -712,13 +723,26 @@ func getMimeType(filePath string) string {
 	}
 }
 
-func (c *WeixinChannel) StartQRLogin(ctx context.Context) (string, error) {
+func (c *WeixinChannel) StartQRLogin(ctx context.Context) (*QRStartResult, error) {
 	qrManager := NewQRLoginManager(c)
-	result, err := qrManager.StartLogin(ctx, "", c.baseURL, false)
-	if err != nil {
-		return "", err
+	return qrManager.StartLogin(ctx, "", c.baseURL, false)
+}
+
+// PollQRStatus polls the QR code login status directly using the qrCode string
+func (c *WeixinChannel) PollQRStatus(ctx context.Context, qrCode string) (*QRStatusResponse, error) {
+	qrManager := NewQRLoginManager(c)
+	return qrManager.PollQRStatus(ctx, c.baseURL, qrCode)
+}
+
+// SaveAccountFromLogin saves account data after successful QR login
+func (c *WeixinChannel) SaveAccountFromLogin(accountID, token, baseURL, userID string) error {
+	normalizedID := NormalizeAccountID(accountID)
+	account := &WeixinAccountData{
+		Token:   token,
+		BaseURL: baseURL,
+		UserID:  userID,
 	}
-	return result.QRCodeURL, nil
+	return c.accountManager.SaveAccount(normalizedID, account)
 }
 
 func (c *WeixinChannel) WaitForQRLogin(ctx context.Context, sessionKey string, timeoutMs int) error {

@@ -461,10 +461,11 @@ const handleSend = () => {
 }
 
 const handleKeyDown = (e: KeyboardEvent) => {
-  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+  if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault()
     handleSend()
   }
+  // Shift+Enter 默认换行，不需要额外处理
 }
 
 

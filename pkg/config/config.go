@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -540,4 +541,164 @@ func parseTomlNestedStringArray(content, key string, defaultValue []string) []st
 	}
 
 	return defaultValue
+}
+
+// SaveDingTalkConfig saves DingTalk configuration to config file
+func (c *Config) SaveDingTalkConfig(clientID, clientSecret string, allowedUsers []string) error {
+	configPath := os.ExpandEnv("$HOME/.goclaw/config.toml")
+
+	// Read existing config
+	content, err := os.ReadFile(configPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			// Create new config file
+			return c.createDingTalkConfigFile(configPath, clientID, clientSecret, allowedUsers)
+		}
+		return err
+	}
+
+	// Update or add channels_config.dingtalk section
+	newContent := c.updateDingTalkSection(string(content), clientID, clientSecret, allowedUsers)
+
+	// Write back
+	if err := os.WriteFile(configPath, []byte(newContent), 0644); err != nil {
+		return err
+	}
+
+	// Update in-memory config
+	if c.Channels == nil {
+		c.Channels = make(map[string]ChannelConfig)
+	}
+	c.Channels["dingtalk"] = ChannelConfig{
+		"client_id":     clientID,
+		"client_secret": clientSecret,
+		"allowed_users": strings.Join(allowedUsers, ","),
+	}
+
+	return nil
+}
+
+func (c *Config) createDingTalkConfigFile(configPath, clientID, clientSecret string, allowedUsers []string) error {
+	if err := os.MkdirAll(filepath.Dir(configPath), 0755); err != nil {
+		return err
+	}
+
+	var content strings.Builder
+	content.WriteString("# GoClaw Configuration\n\n")
+	content.WriteString("[channels_config.dingtalk]\n")
+	content.WriteString(fmt.Sprintf("client_id = \"%s\"\n", clientID))
+	content.WriteString(fmt.Sprintf("client_secret = \"%s\"\n", clientSecret))
+	if len(allowedUsers) > 0 {
+		content.WriteString(fmt.Sprintf("allowed_users = [%s]\n", formatStringArray(allowedUsers)))
+	}
+
+	return os.WriteFile(configPath, []byte(content.String()), 0644)
+}
+
+func (c *Config) updateDingTalkSection(content, clientID, clientSecret string, allowedUsers []string) string {
+	// Find and replace dingtalk section or add it
+	sectionPattern := regexp.MustCompile(`(?s)\[channels_config\.dingtalk\][^\[]*`)
+
+	newSection := fmt.Sprintf("[channels_config.dingtalk]\nclient_id = \"%s\"\nclient_secret = \"%s\"\n",
+		clientID, clientSecret)
+	if len(allowedUsers) > 0 {
+		newSection += fmt.Sprintf("allowed_users = [%s]\n", formatStringArray(allowedUsers))
+	}
+	newSection += "\n"
+
+	if sectionPattern.MatchString(content) {
+		return sectionPattern.ReplaceAllString(content, newSection)
+	}
+
+	// Add new section at the end
+	return content + "\n" + newSection
+}
+
+// SaveWeixinConfig saves Weixin configuration to config file
+func (c *Config) SaveWeixinConfig(token, baseURL, accountID string) error {
+	configPath := os.ExpandEnv("$HOME/.goclaw/config.toml")
+
+	// Read existing config
+	content, err := os.ReadFile(configPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			// Create new config file
+			return c.createWeixinConfigFile(configPath, token, baseURL, accountID)
+		}
+		return err
+	}
+
+	// Update or add channels_config.weixin section
+	newContent := c.updateWeixinSection(string(content), token, baseURL, accountID)
+
+	// Write back
+	if err := os.WriteFile(configPath, []byte(newContent), 0644); err != nil {
+		return err
+	}
+
+	// Update in-memory config
+	if c.Channels == nil {
+		c.Channels = make(map[string]ChannelConfig)
+	}
+	c.Channels["weixin"] = ChannelConfig{
+		"token":      token,
+		"base_url":   baseURL,
+		"account_id": accountID,
+	}
+
+	return nil
+}
+
+func (c *Config) createWeixinConfigFile(configPath, token, baseURL, accountID string) error {
+	if err := os.MkdirAll(filepath.Dir(configPath), 0755); err != nil {
+		return err
+	}
+
+	var content strings.Builder
+	content.WriteString("# GoClaw Configuration\n\n")
+	content.WriteString("[channels_config.weixin]\n")
+	if token != "" {
+		content.WriteString(fmt.Sprintf("token = \"%s\"\n", token))
+	}
+	if baseURL != "" {
+		content.WriteString(fmt.Sprintf("base_url = \"%s\"\n", baseURL))
+	}
+	if accountID != "" {
+		content.WriteString(fmt.Sprintf("account_id = \"%s\"\n", accountID))
+	}
+
+	return os.WriteFile(configPath, []byte(content.String()), 0644)
+}
+
+func (c *Config) updateWeixinSection(content, token, baseURL, accountID string) string {
+	// Find and replace weixin section or add it
+	sectionPattern := regexp.MustCompile(`(?s)\[channels_config\.weixin\][^\[]*`)
+
+	var newSection strings.Builder
+	newSection.WriteString("[channels_config.weixin]\n")
+	if token != "" {
+		newSection.WriteString(fmt.Sprintf("token = \"%s\"\n", token))
+	}
+	if baseURL != "" {
+		newSection.WriteString(fmt.Sprintf("base_url = \"%s\"\n", baseURL))
+	}
+	if accountID != "" {
+		newSection.WriteString(fmt.Sprintf("account_id = \"%s\"\n", accountID))
+	}
+	newSection.WriteString("\n")
+
+	if sectionPattern.MatchString(content) {
+		return sectionPattern.ReplaceAllString(content, newSection.String())
+	}
+
+	// Add new section at the end
+	return content + "\n" + newSection.String()
+}
+
+func formatStringArray(arr []string) string {
+	var result []string
+	for _, s := range arr {
+		result = append(result, fmt.Sprintf("\"%s\"", s))
+	}
+	return strings.Join(result, ", ")
 }
